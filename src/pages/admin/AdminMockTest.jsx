@@ -18,6 +18,10 @@ const DEFAULT_MOCKS = [
 
 const AdminMockTest = () => {
   const [mockTests, setMockTests] = useState([]);
+  const [selectedTestIds, setSelectedTestIds] = useState([]);
+  const [selectedRegIds, setSelectedRegIds] = useState([]);
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{"role":"ADMIN"}');
+  const isAdmin = (currentUser?.role || 'ADMIN').toUpperCase() === 'ADMIN';
   const [isLoading, setIsLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTest, setEditingTest] = useState(null);
@@ -241,6 +245,96 @@ const AdminMockTest = () => {
     }
   };
 
+  // Tests Selection & Bulk Delete
+  const handleSelectAllTests = (e) => {
+    if (e.target.checked) {
+      setSelectedTestIds(mockTests.map(t => t.id));
+    } else {
+      setSelectedTestIds([]);
+    }
+  };
+
+  const handleSelectTest = (id) => {
+    if (selectedTestIds.includes(id)) {
+      setSelectedTestIds(selectedTestIds.filter(i => i !== id));
+    } else {
+      setSelectedTestIds([...selectedTestIds, id]);
+    }
+  };
+
+  const handleBulkDeleteTests = async () => {
+    if (!isAdmin) {
+      alert('Only administrators have access to bulk delete entries.');
+      return;
+    }
+    if (selectedTestIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedTestIds.length} selected mock test(s)? This action cannot be undone.`)) return;
+
+    try {
+      const response = await fetch((window.API_BASE || '') + '/api/admin/mock-tests/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ ids: selectedTestIds })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setMockTests(mockTests.filter(t => !selectedTestIds.includes(t.id)));
+        setSelectedTestIds([]);
+      } else {
+        alert(data.message || 'Bulk delete failed');
+      }
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      setMockTests(mockTests.filter(t => !selectedTestIds.includes(t.id)));
+      setSelectedTestIds([]);
+    }
+  };
+
+  // Registrations Selection & Bulk Delete
+  const handleSelectAllRegs = (e) => {
+    if (e.target.checked) {
+      setSelectedRegIds(filteredRegistrations.map(r => r.id));
+    } else {
+      setSelectedRegIds([]);
+    }
+  };
+
+  const handleSelectReg = (id) => {
+    if (selectedRegIds.includes(id)) {
+      setSelectedRegIds(selectedRegIds.filter(i => i !== id));
+    } else {
+      setSelectedRegIds([...selectedRegIds, id]);
+    }
+  };
+
+  const handleBulkDeleteRegs = async () => {
+    if (!isAdmin) {
+      alert('Only administrators have access to bulk delete entries.');
+      return;
+    }
+    if (selectedRegIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedRegIds.length} selected registration(s)? This action cannot be undone.`)) return;
+
+    try {
+      const response = await fetch((window.API_BASE || '') + '/api/admin/mock-registrations/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ ids: selectedRegIds })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setRegistrations(registrations.filter(r => !selectedRegIds.includes(r.id)));
+        setSelectedRegIds([]);
+      } else {
+        alert(data.message || 'Bulk delete failed');
+      }
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      setRegistrations(registrations.filter(r => !selectedRegIds.includes(r.id)));
+      setSelectedRegIds([]);
+    }
+  };
+
   const filteredRegistrations = registrations.filter(r => {
     const q = regSearch.toLowerCase();
     return (
@@ -320,13 +414,24 @@ const AdminMockTest = () => {
               <h3 className="text-base font-bold text-slate-900">Student Exam Registrations</h3>
               <p className="text-xs text-slate-500 font-medium">Filled form data submitted by students for mock tests.</p>
             </div>
-            <input
-              type="text"
-              placeholder="Search student, email, exam..."
-              value={regSearch}
-              onChange={(e) => setRegSearch(e.target.value)}
-              className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-500 w-full sm:w-64"
-            />
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                placeholder="Search student, email, exam..."
+                value={regSearch}
+                onChange={(e) => setRegSearch(e.target.value)}
+                className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-500 w-full sm:w-64"
+              />
+              {isAdmin && selectedRegIds.length > 0 && (
+                <button
+                  onClick={handleBulkDeleteRegs}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all shrink-0"
+                >
+                  <Trash2 size={14} />
+                  Delete Selected ({selectedRegIds.length})
+                </button>
+              )}
+            </div>
           </div>
 
           {isRegLoading ? (
@@ -342,6 +447,15 @@ const AdminMockTest = () => {
               <table className="w-full text-left border-separate border-spacing-y-2">
                 <thead>
                   <tr className="text-slate-400 text-[10px] font-bold uppercase tracking-widest px-4">
+                    <th className="px-4 pb-2 w-10 text-center">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                        checked={filteredRegistrations.length > 0 && selectedRegIds.length === filteredRegistrations.length}
+                        onChange={handleSelectAllRegs}
+                        title="Select All Registrations"
+                      />
+                    </th>
                     <th className="px-6 pb-2">Student Info</th>
                     <th className="px-6 pb-2">Exam Title</th>
                     <th className="px-6 pb-2">Requested Date</th>
@@ -361,7 +475,15 @@ const AdminMockTest = () => {
 
                     return (
                       <tr key={reg.id} className="bg-slate-50 rounded-xl hover:bg-slate-100/80 transition-colors">
-                        <td className="px-6 py-4 rounded-l-xl">
+                        <td className="px-4 py-4 rounded-l-xl text-center">
+                          <input 
+                            type="checkbox" 
+                            className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                            checked={selectedRegIds.includes(reg.id)}
+                            onChange={() => handleSelectReg(reg.id)}
+                          />
+                        </td>
+                        <td className="px-6 py-4">
                           <div className="font-bold text-xs text-slate-900">{reg.name}</div>
                           <div className="text-[11px] text-slate-500 font-medium">{reg.email} • {reg.phone}</div>
                         </td>
@@ -411,6 +533,18 @@ const AdminMockTest = () => {
       ) : (
         /* Category Tab 1: All Mock Tests Table */
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        {isAdmin && selectedTestIds.length > 0 && (
+          <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-700">{selectedTestIds.length} mock test(s) selected</span>
+            <button
+              onClick={handleBulkDeleteTests}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold transition-all"
+            >
+              <Trash2 size={14} />
+              Delete Selected ({selectedTestIds.length})
+            </button>
+          </div>
+        )}
         {isLoading ? (
           <div className="p-12 text-center text-slate-400 flex items-center justify-center gap-2">
             <Loader2 className="animate-spin" size={20} /> Loading mock tests...
@@ -420,6 +554,15 @@ const AdminMockTest = () => {
             <table className="w-full text-left border-separate border-spacing-y-2">
               <thead>
                 <tr className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest px-4">
+                  <th className="px-4 pb-2 w-10 text-center">
+                    <input 
+                      type="checkbox" 
+                      className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                      checked={mockTests.length > 0 && selectedTestIds.length === mockTests.length}
+                      onChange={handleSelectAllTests}
+                      title="Select All Mock Tests"
+                    />
+                  </th>
                   <th className="px-6 pb-2">Test Info</th>
                   <th className="px-6 pb-2">Description / Content</th>
                   <th className="px-6 pb-2">Price</th>
@@ -432,7 +575,15 @@ const AdminMockTest = () => {
                   const testImg = test.image_url || test.imageUrl;
                   return (
                     <tr key={test.id} className="bg-slate-50 rounded-xl hover:bg-slate-100/80 transition-colors">
-                      <td className="px-6 py-4 font-semibold text-xs text-slate-700 rounded-l-xl">
+                      <td className="px-4 py-4 rounded-l-xl text-center">
+                        <input 
+                          type="checkbox" 
+                          className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                          checked={selectedTestIds.includes(test.id)}
+                          onChange={() => handleSelectTest(test.id)}
+                        />
+                      </td>
+                      <td className="px-6 py-4 font-semibold text-xs text-slate-700">
                         <div className="flex items-center gap-3">
                           {testImg ? (
                             <SafeImage

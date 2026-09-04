@@ -21,6 +21,9 @@ import { getApiUrl } from '../../apiConfig';
 
 const AdminPartners = () => {
   const [partners, setPartners] = useState([]);
+  const [selectedPartnerIds, setSelectedPartnerIds] = useState([]);
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{"role":"ADMIN"}');
+  const isAdmin = (currentUser?.role || 'ADMIN').toUpperCase() === 'ADMIN';
   const [loading, setLoading] = useState(true);
   const [selectedPartner, setSelectedPartner] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
@@ -62,6 +65,53 @@ const AdminPartners = () => {
       }
     } catch (err) {
       console.error('Failed to delete partner:', err);
+    }
+  };
+
+  const handleSelectAllPartners = (e) => {
+    if (e.target.checked) {
+      setSelectedPartnerIds(partners.map(p => p.id));
+    } else {
+      setSelectedPartnerIds([]);
+    }
+  };
+
+  const handleSelectPartner = (id) => {
+    if (selectedPartnerIds.includes(id)) {
+      setSelectedPartnerIds(selectedPartnerIds.filter(i => i !== id));
+    } else {
+      setSelectedPartnerIds([...selectedPartnerIds, id]);
+    }
+  };
+
+  const handleBulkDeletePartners = async () => {
+    if (!isAdmin) {
+      alert('Only administrators have access to bulk delete entries.');
+      return;
+    }
+    if (selectedPartnerIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedPartnerIds.length} selected partner application(s)? This action cannot be undone.`)) return;
+
+    try {
+      const response = await fetch(getApiUrl('/api/admin/partners/bulk-delete'), {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true' 
+        },
+        body: JSON.stringify({ ids: selectedPartnerIds })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setPartners(partners.filter(p => !selectedPartnerIds.includes(p.id)));
+        setSelectedPartnerIds([]);
+      } else {
+        alert(data.message || 'Bulk delete failed');
+      }
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      setPartners(partners.filter(p => !selectedPartnerIds.includes(p.id)));
+      setSelectedPartnerIds([]);
     }
   };
 
@@ -123,10 +173,31 @@ const AdminPartners = () => {
 
       {/* Table Container */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        {isAdmin && selectedPartnerIds.length > 0 && (
+          <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-700">{selectedPartnerIds.length} partner application(s) selected</span>
+            <button
+              onClick={handleBulkDeletePartners}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold transition-all"
+            >
+              <Trash2 size={14} />
+              Delete Selected ({selectedPartnerIds.length})
+            </button>
+          </div>
+        )}
         <div className="overflow-x-auto p-4">
           <table className="w-full text-left border-separate border-spacing-y-2">
             <thead>
               <tr className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest px-4">
+                <th className="px-4 pb-2 w-10 text-center">
+                  <input 
+                    type="checkbox" 
+                    className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                    checked={partners.length > 0 && selectedPartnerIds.length === partners.length}
+                    onChange={handleSelectAllPartners}
+                    title="Select All Partners"
+                  />
+                </th>
                 <th className="px-6 pb-2">Full Name</th>
                 <th className="px-6 pb-2">Organization</th>
                 <th className="px-6 pb-2">Contact Info</th>
@@ -139,13 +210,13 @@ const AdminPartners = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="text-center py-12 text-slate-400 text-xs italic">
+                  <td colSpan="8" className="text-center py-12 text-slate-400 text-xs italic">
                     Loading partner applications...
                   </td>
                 </tr>
               ) : partners.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="text-center py-12 text-slate-400 text-xs italic">
+                  <td colSpan="8" className="text-center py-12 text-slate-400 text-xs italic">
                     No partner applications received yet.
                   </td>
                 </tr>
@@ -154,7 +225,15 @@ const AdminPartners = () => {
                   const pTypes = parsePartnershipTypes(partner.partnership_types || partner.partnershipTypes);
                   return (
                     <tr key={partner.id} className="bg-slate-50 rounded-xl hover:bg-slate-100/80 transition-colors">
-                      <td className="px-6 py-4 font-bold text-xs text-slate-900 rounded-l-xl">
+                      <td className="px-4 py-4 rounded-l-xl text-center">
+                        <input 
+                          type="checkbox" 
+                          className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                          checked={selectedPartnerIds.includes(partner.id)}
+                          onChange={() => handleSelectPartner(partner.id)}
+                        />
+                      </td>
+                      <td className="px-6 py-4 font-bold text-xs text-slate-900">
                         {partner.full_name || partner.fullName}
                       </td>
                       <td className="px-6 py-4 text-xs text-slate-600 font-medium">

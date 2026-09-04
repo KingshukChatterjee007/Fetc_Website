@@ -11,6 +11,9 @@ const ALL_ROLES = [
 
 const AdminUsers = () => {
   const [users, setUsers] = useState([]);
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{"role":"ADMIN"}');
+  const isAdmin = (currentUser?.role || 'ADMIN').toUpperCase() === 'ADMIN';
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   
@@ -200,6 +203,53 @@ const AdminUsers = () => {
     } catch (err) {
       console.error('Delete error:', err);
       alert('Error connecting to server');
+    }
+  };
+
+  const handleSelectAllUsers = (e) => {
+    if (e.target.checked) {
+      setSelectedUserIds(filteredUsers.map(u => u.id));
+    } else {
+      setSelectedUserIds([]);
+    }
+  };
+
+  const handleSelectUser = (id) => {
+    if (selectedUserIds.includes(id)) {
+      setSelectedUserIds(selectedUserIds.filter(i => i !== id));
+    } else {
+      setSelectedUserIds([...selectedUserIds, id]);
+    }
+  };
+
+  const handleBulkDeleteUsers = async () => {
+    if (!isAdmin) {
+      alert('Only administrators have access to bulk delete entries.');
+      return;
+    }
+    if (selectedUserIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedUserIds.length} selected user(s)? This action cannot be undone.`)) return;
+
+    try {
+      const response = await fetch((window.API_BASE || "") + '/api/admin/users/bulk-delete', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true' 
+        },
+        body: JSON.stringify({ ids: selectedUserIds })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setUsers(users.filter(u => !selectedUserIds.includes(u.id)));
+        setSelectedUserIds([]);
+      } else {
+        alert(data.message || 'Bulk delete failed');
+      }
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      setUsers(users.filter(u => !selectedUserIds.includes(u.id)));
+      setSelectedUserIds([]);
     }
   };
 
@@ -554,14 +604,25 @@ const AdminUsers = () => {
 
       <div className="glass-card rounded-2xl border-slate-200/60 shadow-[0_12px_24px_rgba(0,0,0,0.03)] overflow-visible">
         <div className="p-8 border-b border-slate-50 flex flex-wrap items-center justify-between gap-4">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-            <input 
-              className="w-full pl-12 pr-6 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-xs focus:outline-none focus:ring-4 focus:ring-brand-600/5 focus:border-brand-300 transition-all font-medium" 
-              placeholder="Search users..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="flex items-center gap-4 flex-1">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+              <input 
+                className="w-full pl-12 pr-6 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-xs focus:outline-none focus:ring-4 focus:ring-brand-600/5 focus:border-brand-300 transition-all font-medium" 
+                placeholder="Search users..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            {isAdmin && selectedUserIds.length > 0 && (
+              <button
+                onClick={handleBulkDeleteUsers}
+                className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all"
+              >
+                <Trash2 size={14} />
+                Delete Selected ({selectedUserIds.length})
+              </button>
+            )}
           </div>
           {isLoading && <Loader2 className="animate-spin text-brand-600" size={18} />}
         </div>
@@ -570,6 +631,15 @@ const AdminUsers = () => {
           <table className="w-full text-left border-separate border-spacing-y-2">
             <thead>
               <tr className="text-slate-400 text-[10px] font-medium uppercase tracking-widest px-4">
+                <th className="px-4 pb-4 w-10 text-center">
+                  <input 
+                    type="checkbox" 
+                    className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                    checked={filteredUsers.length > 0 && selectedUserIds.length === filteredUsers.length}
+                    onChange={handleSelectAllUsers}
+                    title="Select All Users"
+                  />
+                </th>
                 <th className="px-6 pb-4">User Details</th>
                 <th className="px-6 pb-4">Enrolled Course</th>
                 <th className="px-6 pb-4">Access Role</th>
@@ -581,7 +651,15 @@ const AdminUsers = () => {
             <tbody>
               {filteredUsers.map((user) => (
                 <tr key={user.id} className="bg-slate-50/50 rounded-2xl group hover:bg-white transition-all">
-                  <td className="px-6 py-4 rounded-l-2xl">
+                  <td className="px-4 py-4 rounded-l-2xl text-center">
+                    <input 
+                      type="checkbox" 
+                      className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                      checked={selectedUserIds.includes(user.id)}
+                      onChange={() => handleSelectUser(user.id)}
+                    />
+                  </td>
+                  <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center font-medium">
                         {user.name.charAt(0)}

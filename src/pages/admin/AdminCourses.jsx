@@ -6,6 +6,9 @@ import { getApiUrl } from '../../apiConfig';
 
 const AdminCourses = () => {
   const [courses, setCourses] = useState([]);
+  const [selectedCourseIds, setSelectedCourseIds] = useState([]);
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{"role":"ADMIN"}');
+  const isAdmin = (currentUser?.role || 'ADMIN').toUpperCase() === 'ADMIN';
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -186,6 +189,50 @@ const AdminCourses = () => {
     }
   };
 
+  const handleSelectAllCourses = (e) => {
+    if (e.target.checked) {
+      setSelectedCourseIds(filteredCourses.map(c => c.id));
+    } else {
+      setSelectedCourseIds([]);
+    }
+  };
+
+  const handleSelectCourse = (id) => {
+    if (selectedCourseIds.includes(id)) {
+      setSelectedCourseIds(selectedCourseIds.filter(i => i !== id));
+    } else {
+      setSelectedCourseIds([...selectedCourseIds, id]);
+    }
+  };
+
+  const handleBulkDeleteCourses = async () => {
+    if (!isAdmin) {
+      alert('Only administrators have access to bulk delete entries.');
+      return;
+    }
+    if (selectedCourseIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedCourseIds.length} selected course(s)? This action cannot be undone.`)) return;
+
+    try {
+      const response = await fetch(getApiUrl('/api/admin/courses/bulk-delete'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedCourseIds })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setCourses(courses.filter(c => !selectedCourseIds.includes(c.id)));
+        setSelectedCourseIds([]);
+      } else {
+        alert(data.message || 'Bulk delete failed');
+      }
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      setCourses(courses.filter(c => !selectedCourseIds.includes(c.id)));
+      setSelectedCourseIds([]);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.title.trim()) {
@@ -275,6 +322,15 @@ const AdminCourses = () => {
             <button className="p-3 bg-slate-50 text-slate-400 hover:text-slate-600 rounded-xl transition-all">
               <Download size={18} />
             </button>
+            {isAdmin && selectedCourseIds.length > 0 && (
+              <button
+                onClick={handleBulkDeleteCourses}
+                className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all"
+              >
+                <Trash2 size={14} />
+                Delete Selected ({selectedCourseIds.length})
+              </button>
+            )}
           </div>
         </div>
 
@@ -295,6 +351,15 @@ const AdminCourses = () => {
             <table className="w-full text-left border-separate border-spacing-y-2">
               <thead>
                 <tr className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest px-4">
+                  <th className="px-4 pb-2 w-10 text-center">
+                    <input 
+                      type="checkbox" 
+                      className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                      checked={filteredCourses.length > 0 && selectedCourseIds.length === filteredCourses.length}
+                      onChange={handleSelectAllCourses}
+                      title="Select All Courses"
+                    />
+                  </th>
                   <th className="px-6 pb-2">Course Title</th>
                   <th className="px-6 pb-2">Category</th>
                   <th className="px-6 pb-2">Duration</th>
@@ -306,7 +371,15 @@ const AdminCourses = () => {
               <tbody>
                 {filteredCourses.map((course) => (
                   <tr key={course.id || course.courseId} className="bg-slate-50/70 rounded-xl hover:bg-slate-100/80 transition-all">
-                    <td className="px-6 py-4 font-semibold text-xs text-slate-800 rounded-l-xl">
+                    <td className="px-4 py-4 rounded-l-xl text-center">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                        checked={selectedCourseIds.includes(course.id)}
+                        onChange={() => handleSelectCourse(course.id)}
+                      />
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-xs text-slate-800">
                       <div>
                         <span className="font-bold">{course.title}</span>
                         {course.description && (

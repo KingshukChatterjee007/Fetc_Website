@@ -5,6 +5,7 @@ import { Ticket, Search, Loader2, Mail, Clock, CheckCircle, User, X, MessageSqua
 
 const AdminSupportTickets = () => {
   const [tickets, setTickets] = useState([]);
+  const [selectedTicketIds, setSelectedTicketIds] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -18,8 +19,9 @@ const AdminSupportTickets = () => {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const messagesEndRef = React.useRef(null);
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-  const userRole = (currentUser?.role || '').toUpperCase();
-  const canDeleteTicket = userRole === 'ADMIN' || userRole === 'INSTRUCTOR' || !userRole;
+  const userRole = (currentUser?.role || 'ADMIN').toUpperCase();
+  const isAdmin = userRole === 'ADMIN' || !currentUser?.role;
+  const canDeleteTicket = isAdmin || userRole === 'INSTRUCTOR';
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -132,6 +134,54 @@ const AdminSupportTickets = () => {
     } catch (err) {
       console.error('Delete error:', err);
       alert('Error deleting support ticket');
+    }
+  };
+
+  const handleSelectAllTickets = (e) => {
+    if (e.target.checked) {
+      setSelectedTicketIds(filteredTickets.map(t => t.id));
+    } else {
+      setSelectedTicketIds([]);
+    }
+  };
+
+  const handleSelectTicket = (id, e) => {
+    if (e) e.stopPropagation();
+    if (selectedTicketIds.includes(id)) {
+      setSelectedTicketIds(selectedTicketIds.filter(i => i !== id));
+    } else {
+      setSelectedTicketIds([...selectedTicketIds, id]);
+    }
+  };
+
+  const handleBulkDeleteTickets = async () => {
+    if (!isAdmin) {
+      alert('Only administrators have access to bulk delete entries.');
+      return;
+    }
+    if (selectedTicketIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedTicketIds.length} selected ticket(s)? This action cannot be undone.`)) return;
+
+    try {
+      const response = await fetch((window.API_BASE || '') + '/api/admin/tickets/bulk-delete', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true' 
+        },
+        body: JSON.stringify({ ids: selectedTicketIds })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setTickets(tickets.filter(t => !selectedTicketIds.includes(t.id)));
+        setSelectedTicketIds([]);
+      } else {
+        alert(data.message || 'Bulk delete failed');
+      }
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      setTickets(tickets.filter(t => !selectedTicketIds.includes(t.id)));
+      setSelectedTicketIds([]);
     }
   };
 
@@ -389,14 +439,34 @@ const AdminSupportTickets = () => {
       <div className="glass-card rounded-2xl border-slate-200/60 shadow-[0_12px_24px_rgba(0,0,0,0.03)] overflow-hidden">
         {/* Search & Filter Bar */}
         <div className="p-8 border-b border-slate-50 flex flex-wrap items-center justify-between gap-4">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-            <input 
-              className="w-full pl-12 pr-6 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-xs focus:outline-none focus:ring-4 focus:ring-brand-600/5 focus:border-brand-300 transition-all font-medium" 
-              placeholder="Search by query, name, or email..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="flex items-center gap-3 flex-1 min-w-[280px]">
+            <label className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-100 transition-all text-xs font-semibold text-slate-700">
+              <input 
+                type="checkbox"
+                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                checked={filteredTickets.length > 0 && selectedTicketIds.length === filteredTickets.length}
+                onChange={handleSelectAllTickets}
+              />
+              Select All
+            </label>
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+              <input 
+                className="w-full pl-12 pr-6 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-xs focus:outline-none focus:ring-4 focus:ring-brand-600/5 focus:border-brand-300 transition-all font-medium" 
+                placeholder="Search by query, name, or email..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            {isAdmin && selectedTicketIds.length > 0 && (
+              <button
+                onClick={handleBulkDeleteTickets}
+                className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all"
+              >
+                <Trash2 size={14} />
+                Delete Selected ({selectedTicketIds.length})
+              </button>
+            )}
           </div>
 
           {/* Status Filters */}
@@ -432,6 +502,13 @@ const AdminSupportTickets = () => {
                 <div>
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-2">
+                      <input 
+                        type="checkbox"
+                        className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                        checked={selectedTicketIds.includes(ticket.id)}
+                        onChange={(e) => handleSelectTicket(ticket.id, e)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
                       <div className={`px-3 py-1 rounded-full text-[9px] font-medium tracking-widest uppercase ${getPriorityColor(ticket.priority)}`}>
                         {ticket.priority} Priority
                       </div>

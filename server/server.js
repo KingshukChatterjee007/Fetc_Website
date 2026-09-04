@@ -4526,6 +4526,201 @@ app.put(['/api/admin/users/:userId/student-profile', '/api/users/:userId/student
   }
 });
 
+// ==================== BULK DELETE ENDPOINTS (ADMIN ONLY) ====================
+app.post('/api/admin/users/bulk-delete', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: 'No IDs provided for bulk delete' });
+  }
+  try {
+    const cleanIds = ids.map(Number).filter(n => !isNaN(n));
+    await db.query('DELETE FROM users WHERE id = ANY($1)', [cleanIds]);
+    res.json({ success: true, message: `${ids.length} users deleted successfully` });
+  } catch (err) {
+    console.error('Bulk delete users error:', err);
+    res.status(500).json({ success: false, message: 'Error performing bulk delete on users' });
+  }
+});
+
+app.post('/api/admin/leads/bulk-delete', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: 'No IDs provided for bulk delete' });
+  }
+  try {
+    const cleanIds = ids.map(Number).filter(n => !isNaN(n));
+    await db.query('DELETE FROM leads WHERE id = ANY($1)', [cleanIds]);
+    res.json({ success: true, message: `${ids.length} leads deleted successfully` });
+  } catch (err) {
+    console.error('Bulk delete leads error:', err);
+    res.status(500).json({ success: false, message: 'Error performing bulk delete on leads' });
+  }
+});
+
+app.post('/api/admin/tickets/bulk-delete', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: 'No IDs provided for bulk delete' });
+  }
+  try {
+    const cleanIds = ids.map(Number).filter(n => !isNaN(n));
+    await db.query('DELETE FROM support_tickets WHERE id = ANY($1)', [cleanIds]);
+    res.json({ success: true, message: `${ids.length} support tickets deleted successfully` });
+  } catch (err) {
+    console.error('Bulk delete tickets error:', err);
+    res.status(500).json({ success: false, message: 'Error performing bulk delete on tickets' });
+  }
+});
+
+app.post('/api/admin/invoices/bulk-delete', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: 'No IDs provided for bulk delete' });
+  }
+  try {
+    const stringIds = ids.map(String);
+    const numIds = ids.map(Number).filter(n => !isNaN(n));
+    await db.query('DELETE FROM invoices WHERE invoice_no = ANY($1) OR id = ANY($2)', [stringIds, numIds]);
+    res.json({ success: true, message: `${ids.length} invoices deleted successfully` });
+  } catch (err) {
+    try {
+      await db.query('DELETE FROM invoices WHERE invoice_no = ANY($1)', [ids.map(String)]);
+      res.json({ success: true, message: `${ids.length} invoices deleted successfully` });
+    } catch (e) {
+      console.error('Bulk delete invoices error:', err);
+      res.status(500).json({ success: false, message: 'Error performing bulk delete on invoices' });
+    }
+  }
+});
+
+app.post('/api/admin/purchases/bulk-delete', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: 'No IDs provided for bulk delete' });
+  }
+  try {
+    const numericIds = [];
+    const stringIds = [];
+
+    ids.forEach(id => {
+      if (typeof id === 'number') {
+        numericIds.push(id);
+      } else if (typeof id === 'string') {
+        if (id.startsWith('STU-INV-')) {
+          const parsed = parseInt(id.replace('STU-INV-', ''), 10);
+          if (!isNaN(parsed)) numericIds.push(parsed);
+        } else {
+          const num = parseInt(id, 10);
+          if (!isNaN(num)) numericIds.push(num);
+        }
+        stringIds.push(id);
+      }
+    });
+
+    if (numericIds.length > 0) {
+      await db.query('DELETE FROM orders WHERE id = ANY($1)', [numericIds]);
+    }
+    if (stringIds.length > 0) {
+      await db.query('DELETE FROM orders WHERE merchant_transaction_id = ANY($1)', [stringIds]);
+    }
+
+    res.json({ success: true, message: `${ids.length} student purchases deleted successfully` });
+  } catch (err) {
+    console.error('Bulk delete student purchases error:', err);
+    res.status(500).json({ success: false, message: 'Error performing bulk delete on student purchases' });
+  }
+});
+
+app.post('/api/admin/partners/bulk-delete', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: 'No IDs provided for bulk delete' });
+  }
+  try {
+    const cleanIds = ids.map(Number).filter(n => !isNaN(n));
+    await db.query('DELETE FROM partners WHERE id = ANY($1)', [cleanIds]);
+    res.json({ success: true, message: `${ids.length} partners deleted successfully` });
+  } catch (err) {
+    console.error('Bulk delete partners error:', err);
+    res.status(500).json({ success: false, message: 'Error performing bulk delete on partners' });
+  }
+});
+
+app.post('/api/admin/courses/bulk-delete', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: 'No IDs provided for bulk delete' });
+  }
+  try {
+    const cleanIds = ids.map(Number).filter(n => !isNaN(n));
+    await db.query('DELETE FROM courses WHERE id = ANY($1)', [cleanIds]);
+    res.json({ success: true, message: `${ids.length} courses deleted successfully` });
+  } catch (err) {
+    console.error('Bulk delete courses error:', err);
+    res.status(500).json({ success: false, message: 'Error performing bulk delete on courses' });
+  }
+});
+
+app.post('/api/admin/guides/bulk-delete', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: 'No IDs provided for bulk delete' });
+  }
+  try {
+    const cleanIds = ids.map(Number).filter(n => !isNaN(n));
+    await db.query('DELETE FROM guides WHERE id = ANY($1)', [cleanIds]);
+    res.json({ success: true, message: `${ids.length} guides deleted successfully` });
+  } catch (err) {
+    console.error('Bulk delete guides error:', err);
+    res.status(500).json({ success: false, message: 'Error performing bulk delete on guides' });
+  }
+});
+
+app.post('/api/admin/mock-tests/bulk-delete', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: 'No IDs provided for bulk delete' });
+  }
+  try {
+    const cleanIds = ids.map(Number).filter(n => !isNaN(n));
+    await db.query('DELETE FROM mock_tests WHERE id = ANY($1)', [cleanIds]);
+    res.json({ success: true, message: `${ids.length} mock tests deleted successfully` });
+  } catch (err) {
+    console.error('Bulk delete mock tests error:', err);
+    res.status(500).json({ success: false, message: 'Error performing bulk delete on mock tests' });
+  }
+});
+
+app.post('/api/admin/mock-registrations/bulk-delete', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: 'No IDs provided for bulk delete' });
+  }
+  try {
+    const cleanIds = ids.map(Number).filter(n => !isNaN(n));
+    await db.query('DELETE FROM mock_registrations WHERE id = ANY($1)', [cleanIds]);
+    res.json({ success: true, message: `${ids.length} mock test registrations deleted successfully` });
+  } catch (err) {
+    console.error('Bulk delete mock registrations error:', err);
+    res.status(500).json({ success: false, message: 'Error performing bulk delete on mock registrations' });
+  }
+});
+
+app.post('/api/admin/news-flash/bulk-delete', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: 'No IDs provided for bulk delete' });
+  }
+  try {
+    const cleanIds = ids.map(Number).filter(n => !isNaN(n));
+    await db.query('DELETE FROM news_flash WHERE id = ANY($1)', [cleanIds]);
+    res.json({ success: true, message: `${ids.length} news items deleted successfully` });
+  } catch (err) {
+    console.error('Bulk delete news flash error:', err);
+    res.status(500).json({ success: false, message: 'Error performing bulk delete on news flash' });
+  }
+});
+
 // Export the app for Vercel serverless functions
 module.exports = app;
 

@@ -237,6 +237,9 @@ const EditGuideView = ({ selectedGuide, setSelectedGuide, handleSaveGuide, handl
 // --- MAIN COMPONENT: ADMIN HUB ---
 const AdminGuides = () => {
     const [guides, setGuides] = useState([]);
+    const [selectedGuideIds, setSelectedGuideIds] = useState([]);
+    const currentUser = JSON.parse(localStorage.getItem('user') || '{"role":"ADMIN"}');
+    const isAdmin = (currentUser?.role || 'ADMIN').toUpperCase() === 'ADMIN';
     const [selectedGuide, setSelectedGuide] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
@@ -304,6 +307,59 @@ const AdminGuides = () => {
         }
     };
 
+    const filteredGuidesList = guides.filter(g => 
+        g.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        g.slug.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const handleSelectAllGuides = (e) => {
+        if (e.target.checked) {
+            setSelectedGuideIds(filteredGuidesList.map(g => g.id));
+        } else {
+            setSelectedGuideIds([]);
+        }
+    };
+
+    const handleSelectGuide = (id, e) => {
+        if (e) e.stopPropagation();
+        if (selectedGuideIds.includes(id)) {
+            setSelectedGuideIds(selectedGuideIds.filter(i => i !== id));
+        } else {
+            setSelectedGuideIds([...selectedGuideIds, id]);
+        }
+    };
+
+    const handleBulkDeleteGuides = async () => {
+        if (!isAdmin) {
+            alert('Only administrators have access to bulk delete entries.');
+            return;
+        }
+        if (selectedGuideIds.length === 0) return;
+        if (!window.confirm(`Are you sure you want to delete ${selectedGuideIds.length} selected guide(s)? This action cannot be undone.`)) return;
+
+        try {
+            const response = await fetch((window.API_BASE || "") + '/api/admin/guides/bulk-delete', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'ngrok-skip-browser-warning': 'true' 
+                },
+                body: JSON.stringify({ ids: selectedGuideIds })
+            });
+            const data = await response.json();
+            if (data.success) {
+                setGuides(guides.filter(g => !selectedGuideIds.includes(g.id)));
+                setSelectedGuideIds([]);
+            } else {
+                alert(data.message || 'Bulk delete failed');
+            }
+        } catch (err) {
+            console.error('Bulk delete error:', err);
+            setGuides(guides.filter(g => !selectedGuideIds.includes(g.id)));
+            setSelectedGuideIds([]);
+        }
+    };
+
     return (
         <div className="space-y-10 p-2 md:p-6 lg:p-8">
             <AnimatePresence mode="wait">
@@ -332,17 +388,37 @@ const AdminGuides = () => {
                         </button>
                     </div>
 
-                    <div className="relative">
-                        <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400">
-                             <Search size={20} className="opacity-60" />
+                    <div className="flex flex-wrap items-center gap-4">
+                        <label className="flex items-center gap-2 px-4 py-3 bg-white border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition-all text-xs font-semibold text-slate-700 shadow-sm">
+                            <input 
+                                type="checkbox"
+                                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                                checked={filteredGuidesList.length > 0 && selectedGuideIds.length === filteredGuidesList.length}
+                                onChange={handleSelectAllGuides}
+                            />
+                            Select All Guides
+                        </label>
+                        <div className="relative flex-1 min-w-[280px]">
+                            <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400">
+                                 <Search size={20} className="opacity-60" />
+                            </div>
+                            <input 
+                                type="text"
+                                placeholder="Locate Guide by Title or Slug..."
+                                className="w-full bg-white border border-slate-200 rounded-xl py-4 pl-14 pr-6 text-sm font-medium text-slate-600 placeholder:text-slate-300 focus:outline-none focus:ring-4 focus:ring-brand-600/5 transition-all shadow-sm"
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                            />
                         </div>
-                        <input 
-                            type="text"
-                            placeholder="Locate Guide by Title or Slug..."
-                            className="w-full bg-white border border-slate-200 rounded-xl py-4 pl-14 pr-6 text-sm font-medium text-slate-600 placeholder:text-slate-300 focus:outline-none focus:ring-4 focus:ring-brand-600/5 transition-all shadow-sm"
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                        />
+                        {isAdmin && selectedGuideIds.length > 0 && (
+                            <button
+                                onClick={handleBulkDeleteGuides}
+                                className="flex items-center gap-2 px-4 py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all"
+                            >
+                                <Trash2 size={16} />
+                                Delete Selected ({selectedGuideIds.length})
+                            </button>
+                        )}
                     </div>
 
                     {isLoading ? (
@@ -352,7 +428,7 @@ const AdminGuides = () => {
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {guides.filter(g => g.title.toLowerCase().includes(searchTerm.toLowerCase()) || g.slug.toLowerCase().includes(searchTerm.toLowerCase())).map((guide) => (
+                            {filteredGuidesList.map((guide) => (
                                 <motion.div 
                                     key={guide.id}
                                     onClick={() => setSelectedGuide(guide)}
@@ -362,8 +438,17 @@ const AdminGuides = () => {
                                     
                                     <div className="relative z-10">
                                         <div className="flex justify-between items-start mb-10">
-                                            <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 transition-all duration-500 group-hover:bg-brand-600 group-hover:text-white group-hover:rotate-6 group-hover:shadow-2xl group-hover:shadow-brand-200">
-                                                <BookOpen size={28} />
+                                            <div className="flex items-center gap-3">
+                                                <input 
+                                                    type="checkbox"
+                                                    className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                                                    checked={selectedGuideIds.includes(guide.id)}
+                                                    onChange={(e) => handleSelectGuide(guide.id, e)}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                />
+                                                <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 transition-all duration-500 group-hover:bg-brand-600 group-hover:text-white group-hover:rotate-6 group-hover:shadow-2xl group-hover:shadow-brand-200">
+                                                    <BookOpen size={28} />
+                                                </div>
                                             </div>
                                             <span className={`text-[9px] font-medium uppercase tracking-widest px-4 py-2 rounded-full ${guide.is_active ? 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100' : 'bg-slate-100 text-slate-400'}`}>
                                                 {guide.is_active ? 'Live Version' : 'Dormant'}

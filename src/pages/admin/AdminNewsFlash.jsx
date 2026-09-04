@@ -4,6 +4,9 @@ import { Zap, Plus, Bell, Trash2, Edit2, CheckCircle, XCircle, Loader2, Link as 
 
 const AdminNewsFlash = () => {
   const [items, setItems] = useState([]);
+  const [selectedNewsIds, setSelectedNewsIds] = useState([]);
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{"role":"ADMIN"}');
+  const isAdmin = (currentUser?.role || 'ADMIN').toUpperCase() === 'ADMIN';
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -81,6 +84,54 @@ const AdminNewsFlash = () => {
     }
   };
 
+  const handleSelectAllNews = (e) => {
+    if (e.target.checked) {
+      setSelectedNewsIds(items.map(item => item.id));
+    } else {
+      setSelectedNewsIds([]);
+    }
+  };
+
+  const handleSelectNews = (id, e) => {
+    if (e) e.stopPropagation();
+    if (selectedNewsIds.includes(id)) {
+      setSelectedNewsIds(selectedNewsIds.filter(i => i !== id));
+    } else {
+      setSelectedNewsIds([...selectedNewsIds, id]);
+    }
+  };
+
+  const handleBulkDeleteNews = async () => {
+    if (!isAdmin) {
+      alert('Only administrators have access to bulk delete entries.');
+      return;
+    }
+    if (selectedNewsIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedNewsIds.length} selected news flash item(s)? This action cannot be undone.`)) return;
+
+    try {
+      const response = await fetch((window.API_BASE || "") + '/api/admin/news-flash/bulk-delete', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true' 
+        },
+        body: JSON.stringify({ ids: selectedNewsIds })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setItems(items.filter(item => !selectedNewsIds.includes(item.id)));
+        setSelectedNewsIds([]);
+      } else {
+        alert(data.message || 'Bulk delete failed');
+      }
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      setItems(items.filter(item => !selectedNewsIds.includes(item.id)));
+      setSelectedNewsIds([]);
+    }
+  };
+
   const toggleStatus = async (item) => {
     try {
       const res = await fetch((window.API_BASE || "") + `/api/admin/news-flash/${item.id}`, {
@@ -110,12 +161,34 @@ const AdminNewsFlash = () => {
           </div>
           <p className="text-slate-500 font-medium text-sm italic">Broadcast important announcements across the website footer.</p>
         </div>
-        <button 
-          onClick={() => handleOpenModal()}
-          className="flex items-center justify-center gap-2 bg-slate-900 text-white px-8 py-4 rounded-2xl font-medium text-sm hover:bg-brand-600 transition-all shadow-xl hover:-translate-y-1 active:scale-95"
-        >
-          <Plus size={18} /> Create Announcement
-        </button>
+        <div className="flex items-center gap-3">
+          {items.length > 0 && (
+            <label className="flex items-center gap-2 px-4 py-3 bg-white border border-slate-200 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all text-xs font-semibold text-slate-700 shadow-sm">
+              <input 
+                type="checkbox"
+                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                checked={items.length > 0 && selectedNewsIds.length === items.length}
+                onChange={handleSelectAllNews}
+              />
+              Select All
+            </label>
+          )}
+          {isAdmin && selectedNewsIds.length > 0 && (
+            <button
+              onClick={handleBulkDeleteNews}
+              className="flex items-center gap-2 px-6 py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-xs font-semibold shadow-sm transition-all"
+            >
+              <Trash2 size={16} />
+              Delete Selected ({selectedNewsIds.length})
+            </button>
+          )}
+          <button 
+            onClick={() => handleOpenModal()}
+            className="flex items-center justify-center gap-2 bg-slate-900 text-white px-8 py-4 rounded-2xl font-medium text-sm hover:bg-brand-600 transition-all shadow-xl hover:-translate-y-1 active:scale-95"
+          >
+            <Plus size={18} /> Create Announcement
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4">
@@ -139,8 +212,14 @@ const AdminNewsFlash = () => {
               key={item.id}
               className={`group glass-card rounded-2xl border transition-all duration-300 p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 ${item.is_active ? 'border-brand-100 shadow-md hover:shadow-xl' : 'border-slate-100 opacity-60 hover:opacity-100 shadow-sm'}`}
             >
-              <div className="flex-1 flex gap-4">
-                <div className={`mt-1 shrink-0 p-2 rounded-xl h-fit ${item.is_active ? 'bg-brand-50 text-brand-600' : 'bg-slate-50 text-slate-400'}`}>
+              <div className="flex-1 flex items-center gap-4">
+                <input 
+                  type="checkbox"
+                  className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                  checked={selectedNewsIds.includes(item.id)}
+                  onChange={(e) => handleSelectNews(item.id, e)}
+                />
+                <div className={`shrink-0 p-2 rounded-xl h-fit ${item.is_active ? 'bg-brand-50 text-brand-600' : 'bg-slate-50 text-slate-400'}`}>
                   <Zap size={18} />
                 </div>
                 <div className="space-y-1">

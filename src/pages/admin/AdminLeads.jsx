@@ -104,6 +104,9 @@ const docFieldsByService = {
 const AdminLeads = () => {
   const navigate = useNavigate();
   const [leads, setLeads] = useState([]);
+  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{"role":"ADMIN"}');
+  const isAdmin = (currentUser?.role || 'ADMIN').toUpperCase() === 'ADMIN';
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, id: null });
@@ -184,6 +187,50 @@ const AdminLeads = () => {
       }
     } catch (err) {
       console.error('Delete failed:', err);
+    }
+  };
+
+  const handleSelectAllLeads = (e) => {
+    if (e.target.checked) {
+      setSelectedLeadIds(filteredLeads.map(l => l.id));
+    } else {
+      setSelectedLeadIds([]);
+    }
+  };
+
+  const handleSelectLead = (id) => {
+    if (selectedLeadIds.includes(id)) {
+      setSelectedLeadIds(selectedLeadIds.filter(i => i !== id));
+    } else {
+      setSelectedLeadIds([...selectedLeadIds, id]);
+    }
+  };
+
+  const handleBulkDeleteLeads = async () => {
+    if (!isAdmin) {
+      alert('Only administrators have access to bulk delete entries.');
+      return;
+    }
+    if (selectedLeadIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedLeadIds.length} selected lead(s)? This action cannot be undone.`)) return;
+
+    try {
+      const response = await fetch((window.API_BASE || '') + '/api/admin/leads/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedLeadIds })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setLeads(leads.filter(l => !selectedLeadIds.includes(l.id)));
+        setSelectedLeadIds([]);
+      } else {
+        alert(data.message || 'Bulk delete failed');
+      }
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      setLeads(leads.filter(l => !selectedLeadIds.includes(l.id)));
+      setSelectedLeadIds([]);
     }
   };
 
@@ -1151,6 +1198,16 @@ const AdminLeads = () => {
             </button>
           )}
 
+          {isAdmin && selectedLeadIds.length > 0 && (
+            <button
+              onClick={handleBulkDeleteLeads}
+              className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all"
+            >
+              <Trash2 size={14} />
+              Delete Selected ({selectedLeadIds.length})
+            </button>
+          )}
+
           {isLoading && <Loader2 className="animate-spin text-brand-600 ml-auto" size={18} />}
         </div>
 
@@ -1158,6 +1215,15 @@ const AdminLeads = () => {
           <table className="w-full text-left border-separate border-spacing-y-2">
             <thead>
               <tr className="text-slate-400 text-[10px] font-medium uppercase tracking-widest px-4">
+                <th className="px-4 pb-4 w-10 text-center">
+                  <input 
+                    type="checkbox" 
+                    className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                    checked={filteredLeads.length > 0 && selectedLeadIds.length === filteredLeads.length}
+                    onChange={handleSelectAllLeads}
+                    title="Select All Leads"
+                  />
+                </th>
                 <th className="px-6 pb-4">Lead Information</th>
                 <th className="px-6 pb-4">Area of Interest</th>
                 <th className="px-6 pb-4">Lead Status</th>
@@ -1167,7 +1233,15 @@ const AdminLeads = () => {
             <tbody>
               {filteredLeads.map((lead) => (
                 <tr key={lead.id} className="bg-slate-50/50 rounded-2xl group hover:bg-white transition-all">
-                  <td className="px-6 py-4 rounded-l-2xl">
+                  <td className="px-4 py-4 rounded-l-2xl text-center">
+                    <input 
+                      type="checkbox" 
+                      className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                      checked={selectedLeadIds.includes(lead.id)}
+                      onChange={() => handleSelectLead(lead.id)}
+                    />
+                  </td>
+                  <td className="px-6 py-4">
                     <div className="flex flex-col gap-1">
                       <p className="text-sm font-semibold text-slate-800">{lead.name}</p>
                       

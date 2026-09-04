@@ -20,6 +20,10 @@ const AdminInvoice = () => {
   
   // Data States
   const [invoices, setInvoices] = useState([]);
+  const [selectedInvoiceNos, setSelectedInvoiceNos] = useState([]);
+  const [selectedPurchaseIds, setSelectedPurchaseIds] = useState([]);
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{"role":"ADMIN"}');
+  const isAdmin = (currentUser?.role || 'ADMIN').toUpperCase() === 'ADMIN';
   const [studentPurchases, setStudentPurchases] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingPurchases, setIsFetchingPurchases] = useState(false);
@@ -171,6 +175,94 @@ const AdminInvoice = () => {
     } catch (err) {
       console.error('Error deleting invoice:', err);
       alert('Failed to delete invoice');
+    }
+  };
+
+  const handleSelectAllInvoices = (e) => {
+    if (e.target.checked) {
+      setSelectedInvoiceNos(filteredInvoices.map(inv => inv.invoiceNo || inv.id));
+    } else {
+      setSelectedInvoiceNos([]);
+    }
+  };
+
+  const handleSelectInvoice = (invoiceNo) => {
+    if (selectedInvoiceNos.includes(invoiceNo)) {
+      setSelectedInvoiceNos(selectedInvoiceNos.filter(i => i !== invoiceNo));
+    } else {
+      setSelectedInvoiceNos([...selectedInvoiceNos, invoiceNo]);
+    }
+  };
+
+  const handleBulkDeleteInvoices = async () => {
+    if (!isAdmin) {
+      alert('Only administrators have access to bulk delete entries.');
+      return;
+    }
+    if (selectedInvoiceNos.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedInvoiceNos.length} selected invoice(s)? This action cannot be undone.`)) return;
+
+    try {
+      const response = await fetch(getApiUrl('/api/admin/invoices/bulk-delete'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedInvoiceNos })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setInvoices(invoices.filter(i => !selectedInvoiceNos.includes(i.invoiceNo || i.id)));
+        setSelectedInvoiceNos([]);
+      } else {
+        alert(data.message || 'Bulk delete failed');
+      }
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      setInvoices(invoices.filter(i => !selectedInvoiceNos.includes(i.invoiceNo || i.id)));
+      setSelectedInvoiceNos([]);
+    }
+  };
+
+  const handleSelectAllPurchases = (e) => {
+    if (e.target.checked) {
+      setSelectedPurchaseIds(filteredPurchases.map(p => p.id || p.invoiceNo));
+    } else {
+      setSelectedPurchaseIds([]);
+    }
+  };
+
+  const handleSelectPurchase = (id) => {
+    if (selectedPurchaseIds.includes(id)) {
+      setSelectedPurchaseIds(selectedPurchaseIds.filter(i => i !== id));
+    } else {
+      setSelectedPurchaseIds([...selectedPurchaseIds, id]);
+    }
+  };
+
+  const handleBulkDeletePurchases = async () => {
+    if (!isAdmin) {
+      alert('Only administrators have access to bulk delete entries.');
+      return;
+    }
+    if (selectedPurchaseIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedPurchaseIds.length} selected student online purchase(s)? This action cannot be undone.`)) return;
+
+    try {
+      const response = await fetch(getApiUrl('/api/admin/purchases/bulk-delete'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedPurchaseIds })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setStudentPurchases(studentPurchases.filter(p => !selectedPurchaseIds.includes(p.id) && !selectedPurchaseIds.includes(p.invoiceNo)));
+        setSelectedPurchaseIds([]);
+      } else {
+        alert(data.message || 'Bulk delete failed');
+      }
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      setStudentPurchases(studentPurchases.filter(p => !selectedPurchaseIds.includes(p.id) && !selectedPurchaseIds.includes(p.invoiceNo)));
+      setSelectedPurchaseIds([]);
     }
   };
 
@@ -373,15 +465,24 @@ const AdminInvoice = () => {
                   placeholder={activeCategory === 'admin' ? "Search by Invoice No, Client, or Company" : "Search by Student Name, Email, or Course"}
                 />
               </div>
-              <div className="relative">
-                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                <input
-                  type="text"
-                  className="pl-12 pr-6 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none font-medium text-slate-700 cursor-not-allowed"
-                  placeholder="Filter by Date Range"
-                  readOnly
-                />
-              </div>
+              {isAdmin && activeCategory === 'admin' && selectedInvoiceNos.length > 0 && (
+                <button
+                  onClick={handleBulkDeleteInvoices}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all"
+                >
+                  <Trash2 size={14} />
+                  Delete Selected ({selectedInvoiceNos.length})
+                </button>
+              )}
+              {isAdmin && activeCategory === 'student' && selectedPurchaseIds.length > 0 && (
+                <button
+                  onClick={handleBulkDeletePurchases}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all"
+                >
+                  <Trash2 size={14} />
+                  Delete Selected ({selectedPurchaseIds.length})
+                </button>
+              )}
             </div>
 
             {/* CATEGORY 1: ADMIN CREATED INVOICES TABLE */}
@@ -399,6 +500,15 @@ const AdminInvoice = () => {
                   <table className="w-full text-left border-separate border-spacing-y-2">
                     <thead>
                       <tr className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest px-4">
+                        <th className="px-4 pb-2 w-10 text-center">
+                          <input 
+                            type="checkbox" 
+                            className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                            checked={filteredInvoices.length > 0 && selectedInvoiceNos.length === filteredInvoices.length}
+                            onChange={handleSelectAllInvoices}
+                            title="Select All Invoices"
+                          />
+                        </th>
                         <th className="px-6 pb-2">Invoice No</th>
                         <th className="px-6 pb-2">Client</th>
                         <th className="px-6 pb-2">Company</th>
@@ -409,6 +519,7 @@ const AdminInvoice = () => {
                     </thead>
                     <tbody>
                       {filteredInvoices.map((inv) => {
+                        const invId = inv.invoiceNo || inv.id;
                         const clientName = inv.billTo?.clientName || inv.client || 'N/A';
                         const companyName = inv.billTo?.companyName || inv.company || 'N/A';
                         const formattedDate = inv.invoiceDate
@@ -419,9 +530,17 @@ const AdminInvoice = () => {
                           : inv.total;
 
                         return (
-                          <tr key={inv.invoiceNo || inv.id} className="bg-slate-50 rounded-xl hover:bg-slate-100/80 transition-colors">
-                            <td className="px-6 py-4 font-semibold text-xs text-slate-700 rounded-l-xl">
-                              {inv.invoiceNo || inv.id}
+                          <tr key={invId} className="bg-slate-50 rounded-xl hover:bg-slate-100/80 transition-colors">
+                            <td className="px-4 py-4 rounded-l-xl text-center">
+                              <input 
+                                type="checkbox" 
+                                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                                checked={selectedInvoiceNos.includes(invId)}
+                                onChange={() => handleSelectInvoice(invId)}
+                              />
+                            </td>
+                            <td className="px-6 py-4 font-semibold text-xs text-slate-700">
+                              {invId}
                             </td>
                             <td className="px-6 py-4 text-xs text-slate-600 font-medium">
                               {clientName}
@@ -477,6 +596,15 @@ const AdminInvoice = () => {
                   <table className="w-full text-left border-separate border-spacing-y-2">
                     <thead>
                       <tr className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest px-4">
+                        <th className="px-4 pb-2 w-10 text-center">
+                          <input 
+                            type="checkbox" 
+                            className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                            checked={filteredPurchases.length > 0 && selectedPurchaseIds.length === filteredPurchases.length}
+                            onChange={handleSelectAllPurchases}
+                            title="Select All Student Purchases"
+                          />
+                        </th>
                         <th className="px-6 pb-2">Receipt No</th>
                         <th className="px-6 pb-2">Student Name</th>
                         <th className="px-6 pb-2">Product / Test</th>
@@ -488,6 +616,7 @@ const AdminInvoice = () => {
                     </thead>
                     <tbody>
                       {filteredPurchases.map((stu) => {
+                        const stuId = stu.id || stu.invoiceNo;
                         const formattedDate = stu.createdAt
                           ? new Date(stu.createdAt).toLocaleDateString('en-US')
                           : 'N/A';
@@ -499,8 +628,16 @@ const AdminInvoice = () => {
                         const isPending = stu.status?.toUpperCase() === 'PENDING';
 
                         return (
-                          <tr key={stu.id} className="bg-slate-50 rounded-xl hover:bg-slate-100/80 transition-colors">
-                            <td className="px-6 py-4 font-semibold text-xs text-brand-600 rounded-l-xl">
+                          <tr key={stu.id || stu.invoiceNo} className="bg-slate-50 rounded-xl hover:bg-slate-100/80 transition-colors">
+                            <td className="px-4 py-4 rounded-l-xl text-center">
+                              <input 
+                                type="checkbox" 
+                                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                                checked={selectedPurchaseIds.includes(stuId)}
+                                onChange={() => handleSelectPurchase(stuId)}
+                              />
+                            </td>
+                            <td className="px-6 py-4 font-semibold text-xs text-brand-600">
                               {stu.invoiceNo}
                             </td>
                             <td className="px-6 py-4 text-xs font-semibold text-slate-800">
