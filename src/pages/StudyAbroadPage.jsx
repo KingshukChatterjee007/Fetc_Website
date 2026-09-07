@@ -528,7 +528,7 @@ function StudyAbroadPage() {
             {
               label: "Free Education in Italy",
               description: "Learn how you can study in Italy with zero tuition fees under various scholarship schemes.",
-              url: "/AA.pdf"
+              url: "/Free Education in Italy.pdf"
             },
             {
               label: "Study Medicine in Europe",
