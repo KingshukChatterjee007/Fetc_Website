@@ -64,7 +64,7 @@ const UserLayout = () => {
       </div>
 
       <nav className="p-4 space-y-1 overflow-y-auto">
-        {sidebarItems.filter(item => !(item.path === "/dashboard/verification" && userData?.role === "ADMIN")).map((item, idx) => (
+        {sidebarItems.filter(item => !(item.path === "/dashboard/verification" && (userData?.role === "ADMIN" || userData?.role === "INSTRUCTOR"))).map((item, idx) => (
           <NavLink
             key={idx}
             to={item.path}

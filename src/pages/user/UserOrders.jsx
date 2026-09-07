@@ -106,6 +106,19 @@ const UserOrders = () => {
                 })
               : 'N/A';
 
+            const formattedAssessmentDate = order.assessmentDate
+              ? (() => {
+                  try {
+                    const d = new Date(order.assessmentDate);
+                    return isNaN(d.getTime())
+                      ? order.assessmentDate
+                      : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                  } catch (e) {
+                    return order.assessmentDate;
+                  }
+                })()
+              : null;
+
             return (
               <div
                 key={orderId}
@@ -150,6 +163,19 @@ const UserOrders = () => {
                       {formattedDate}
                     </span>
                   </div>
+
+                  {/* Scheduled Assessment Date (for Career Assessment) */}
+                  {formattedAssessmentDate && (
+                    <div className="col-span-2 bg-blue-50/80 p-2.5 rounded-xl border border-blue-100/90 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-blue-700 font-semibold">
+                        <Calendar size={13} className="text-blue-600" />
+                        <span>Assessment Date</span>
+                      </div>
+                      <span className="text-xs font-extrabold text-blue-900 bg-white px-2.5 py-0.5 rounded-lg border border-blue-200/60 shadow-2xs">
+                        {formattedAssessmentDate}
+                      </span>
+                    </div>
+                  )}
 
                   <div className="col-span-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                     <div className="flex items-center gap-1.5 text-slate-400 font-medium mb-1">

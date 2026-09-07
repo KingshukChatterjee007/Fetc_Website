@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Ticket, Search, Loader2, Mail, Clock, CheckCircle, User, X, MessageSquare, Send, ExternalLink, Trash2, Calendar, ArrowUpDown } from 'lucide-react';
+import { Ticket, Search, Loader2, Mail, Clock, CheckCircle, User, X, MessageSquare, Send, ExternalLink, Trash2, Calendar, ArrowUpDown, Target, Phone } from 'lucide-react';
 
 const AdminSupportTickets = () => {
   const [tickets, setTickets] = useState([]);
@@ -10,6 +10,7 @@ const AdminSupportTickets = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [categoryFilter, setCategoryFilter] = useState("ALL"); // ALL | SUPPORT | CAREER_ASSESSMENT
   const [dateFilterPreset, setDateFilterPreset] = useState("ALL");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -17,6 +18,28 @@ const AdminSupportTickets = () => {
   const [replyText, setReplyText] = useState("");
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [notification, setNotification] = useState(null);
+
+  // Helper functions for Career Assessment tickets
+  const isCareerAssessmentTicket = (t) => {
+    if (!t) return false;
+    const cat = (t.category || '').toLowerCase();
+    const subj = (t.subject || '').toLowerCase();
+    const msg = (t.message || '').toLowerCase();
+    return cat === 'career_assessment' || cat === 'careerassessment' || subj.includes('career assessment') || msg.includes('career assessment');
+  };
+
+  const getAssessmentDate = (t) => {
+    if (!t) return '';
+    if (t.assessment_date && String(t.assessment_date).trim()) return String(t.assessment_date).trim();
+    const match = t.message?.match(/(?:Selected Assessment Date|Scheduled Date|Date):\s*([^\n\r,]+)/i);
+    return match ? match[1].trim() : '';
+  };
+
+  const getCandidatePhone = (t) => {
+    if (!t || !t.message) return '';
+    const match = t.message.match(/Phone:\s*([^\n\r]+)/i);
+    return match ? match[1].trim() : '';
+  };
 
   // Live Chat Box state
   const [chatMessages, setChatMessages] = useState([]);
@@ -300,12 +323,30 @@ const AdminSupportTickets = () => {
     setEndDate("");
   };
 
+  const careerAssessmentCount = tickets.filter(t => isCareerAssessmentTicket(t)).length;
+  const generalSupportCount = tickets.filter(t => !isCareerAssessmentTicket(t)).length;
+  const totalCount = tickets.length;
+
   const filteredTickets = tickets
     .filter(ticket => {
+      // Category filter: when CAREER_ASSESSMENT is selected, show ONLY career assessment tickets
+      if (categoryFilter === 'CAREER_ASSESSMENT' && !isCareerAssessmentTicket(ticket)) {
+        return false;
+      }
+      if (categoryFilter === 'SUPPORT' && isCareerAssessmentTicket(ticket)) {
+        return false;
+      }
+
+      const assessmentDateStr = getAssessmentDate(ticket);
+      const phoneStr = getCandidatePhone(ticket);
+
       const matchesSearch = (
         ticket.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (ticket.name && ticket.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (ticket.email && ticket.email.toLowerCase().includes(searchTerm.toLowerCase()))
+        (ticket.email && ticket.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (ticket.message && ticket.message.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (assessmentDateStr && assessmentDateStr.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (phoneStr && phoneStr.includes(searchTerm))
       );
 
       const matchesStatus = statusFilter === "ALL" || ticket.status === statusFilter;
@@ -346,10 +387,15 @@ const AdminSupportTickets = () => {
                 {/* Modal Header */}
                 <div className="p-8 pb-4 border-b border-slate-100 flex justify-between items-start shrink-0 bg-slate-50/50">
                   <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className={`w-fit px-3 py-1 rounded-full text-[9px] font-medium tracking-widest uppercase ${getPriorityColor(selectedTicket.priority)}`}>
                         {selectedTicket.priority} Priority
                       </span>
+                      {isCareerAssessmentTicket(selectedTicket) && (
+                        <span className="px-3 py-1 rounded-full text-[9px] font-bold tracking-widest uppercase bg-purple-100 text-purple-700 flex items-center gap-1">
+                          <Target size={10} /> Career Assessment
+                        </span>
+                      )}
                       <span className={`px-3 py-1 rounded-full text-[9px] font-medium tracking-widest uppercase ${
                         selectedTicket.status === 'OPEN' ? 'bg-blue-100 text-blue-600' : 
                         selectedTicket.status === 'IN_PROGRESS' ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'
@@ -377,6 +423,42 @@ const AdminSupportTickets = () => {
 
                 {/* Scrollable Content */}
                 <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50/40">
+                  {/* Career Assessment Highlight Banner */}
+                  {isCareerAssessmentTicket(selectedTicket) && (
+                    <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50/80 border border-purple-200/90 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+                          <Target size={20} />
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-black uppercase tracking-wider text-purple-700 bg-purple-200/70 px-2 py-0.5 rounded">
+                            Career Assessment Candidate
+                          </span>
+                          <p className="text-xs text-slate-800 font-bold mt-1 flex flex-wrap items-center gap-2">
+                            <span>{selectedTicket.name || 'Anonymous'}</span>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-slate-600 font-normal">{selectedTicket.email}</span>
+                            {getCandidatePhone(selectedTicket) && (
+                              <>
+                                <span className="text-slate-300">•</span>
+                                <span className="text-purple-700 font-semibold flex items-center gap-1">
+                                  <Phone size={10} /> {getCandidatePhone(selectedTicket)}
+                                </span>
+                              </>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="bg-white border border-purple-200 px-4 py-2 rounded-xl text-right shadow-2xs shrink-0">
+                        <p className="text-[9px] font-bold text-purple-600 uppercase tracking-tight">Scheduled Assessment Date</p>
+                        <p className="text-sm font-black text-purple-950 flex items-center gap-1.5 justify-end">
+                          <Calendar size={14} className="text-purple-600" />
+                          {getAssessmentDate(selectedTicket) || 'Not specified'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   {/* User Info Bar */}
                   <div className="flex items-center justify-between gap-3 p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
                     <div className="flex items-center gap-3 overflow-hidden">
@@ -507,10 +589,63 @@ const AdminSupportTickets = () => {
         document.body
       )}
 
-      <div className="flex flex-wrap items-end justify-between gap-4 mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-semibold text-slate-900 tracking-tight mb-2">Student Support</h1>
-          <p className="text-slate-500 font-medium text-sm italic">Review inquiries and directly reply to students via email.</p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight mb-1">Student Support & Bookings</h1>
+          <p className="text-slate-500 font-medium text-xs">Review general inquiries and candidate Career Assessment scheduled bookings.</p>
+        </div>
+
+        {/* Category Tabs: All | General Support | Career Assessment */}
+        <div className="flex items-center gap-1.5 bg-slate-200/60 p-1.5 rounded-2xl border border-slate-200 shadow-2xs">
+          <button
+            onClick={() => setCategoryFilter('ALL')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+              categoryFilter === 'ALL'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <span>All Tickets</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              categoryFilter === 'ALL' ? 'bg-slate-100 text-slate-800' : 'bg-slate-200/80 text-slate-600'
+            }`}>
+              {totalCount}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setCategoryFilter('SUPPORT')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+              categoryFilter === 'SUPPORT'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <Ticket size={13} />
+            <span>General Support</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              categoryFilter === 'SUPPORT' ? 'bg-blue-500 text-white' : 'bg-slate-200/80 text-slate-600'
+            }`}>
+              {generalSupportCount}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setCategoryFilter('CAREER_ASSESSMENT')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              categoryFilter === 'CAREER_ASSESSMENT'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-200 ring-2 ring-purple-400/30'
+                : 'text-purple-700 bg-purple-50 hover:bg-purple-100 hover:text-purple-900 border border-purple-200/80'
+            }`}
+          >
+            <Target size={14} className={categoryFilter === 'CAREER_ASSESSMENT' ? 'text-purple-200' : 'text-purple-600'} />
+            <span>Career Assessment</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+              categoryFilter === 'CAREER_ASSESSMENT' ? 'bg-purple-500 text-white' : 'bg-purple-200 text-purple-800'
+            }`}>
+              {careerAssessmentCount}
+            </span>
+          </button>
         </div>
       </div>
 
@@ -682,6 +817,11 @@ const AdminSupportTickets = () => {
                       <div className={`px-3 py-1 rounded-full text-[9px] font-medium tracking-widest uppercase ${getPriorityColor(ticket.priority)}`}>
                         {ticket.priority} Priority
                       </div>
+                      {isCareerAssessmentTicket(ticket) && (
+                        <span className="px-2.5 py-1 rounded-full text-[9px] font-extrabold bg-purple-100 text-purple-700 border border-purple-200/80 flex items-center gap-1 shadow-2xs">
+                          <Target size={10} /> Career Assessment
+                        </span>
+                      )}
                       {ticket.admin_reply && (
                         <span className="px-2.5 py-1 rounded-full text-[9px] font-semibold bg-indigo-50 text-indigo-600 flex items-center gap-1">
                           <Mail size={10} /> Replied
@@ -696,7 +836,26 @@ const AdminSupportTickets = () => {
                     </span>
                   </div>
 
-                  <h4 className="text-base font-semibold text-slate-900 mb-2 truncate">{ticket.subject}</h4>
+                  <h4 className="text-base font-semibold text-slate-900 mb-1 truncate">{ticket.subject}</h4>
+
+                  {/* Scheduled Assessment Date Callout for Career Assessment */}
+                  {isCareerAssessmentTicket(ticket) && (
+                    <div className="my-3 px-3 py-2 bg-gradient-to-r from-purple-50 to-indigo-50/70 border border-purple-200/90 rounded-xl flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+                      <div className="flex items-center gap-2 text-purple-900 text-xs font-bold">
+                        <Calendar size={13} className="text-purple-600 shrink-0" />
+                        <span className="text-[10px] uppercase tracking-wider text-purple-600 font-extrabold">Assessment Date:</span>
+                        <span className="text-purple-950 font-black bg-white px-2 py-0.5 rounded-md border border-purple-200 text-xs">
+                          {getAssessmentDate(ticket) || 'Not specified'}
+                        </span>
+                      </div>
+                      {getCandidatePhone(ticket) && (
+                        <span className="text-[11px] font-semibold text-purple-800 flex items-center gap-1 bg-white/80 px-2 py-0.5 rounded-md border border-purple-100">
+                          <Phone size={10} className="text-purple-500" /> {getCandidatePhone(ticket)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   <p className="text-xs text-slate-500 mb-6 line-clamp-2 italic leading-relaxed break-words">"{ticket.message}"</p>
                 </div>
 
@@ -777,14 +936,19 @@ const AdminSupportTickets = () => {
               <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Ticket className="text-blue-600" size={24} />
               </div>
-              <h3 className="text-lg font-semibold text-slate-800 mb-1">No tickets match your filters</h3>
-              <p className="text-slate-400 text-sm italic mb-4">Try adjusting your date range, search query, or status filter.</p>
-              {(dateFilterPreset !== 'ALL' || startDate || endDate || searchTerm || statusFilter !== 'ALL') && (
+              <h3 className="text-lg font-semibold text-slate-800 mb-1">
+                {categoryFilter === 'CAREER_ASSESSMENT' ? 'No Career Assessment bookings match your filters' : 'No tickets match your filters'}
+              </h3>
+              <p className="text-slate-400 text-sm italic mb-4">
+                {categoryFilter === 'CAREER_ASSESSMENT' ? 'Try adjusting your date range, search query, or check All Tickets.' : 'Try adjusting your date range, search query, or status filter.'}
+              </p>
+              {(dateFilterPreset !== 'ALL' || startDate || endDate || searchTerm || statusFilter !== 'ALL' || categoryFilter !== 'ALL') && (
                 <button
                   onClick={() => {
                     handleClearDateFilter();
                     setSearchTerm('');
                     setStatusFilter('ALL');
+                    setCategoryFilter('ALL');
                   }}
                   className="px-4 py-2 bg-brand-50 text-brand-600 hover:bg-brand-100 rounded-xl text-xs font-bold transition-all"
                 >

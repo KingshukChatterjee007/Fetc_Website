@@ -185,6 +185,9 @@ const runMigrations = async () => {
       );
       ALTER TABLE tickets ADD COLUMN IF NOT EXISTS admin_reply TEXT;
       ALTER TABLE tickets ADD COLUMN IF NOT EXISTS replied_at TIMESTAMP;
+      ALTER TABLE tickets ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'SUPPORT';
+      ALTER TABLE tickets ADD COLUMN IF NOT EXISTS assessment_date VARCHAR(100);
+      UPDATE tickets SET category = 'CAREER_ASSESSMENT' WHERE (subject ILIKE '%Career Assessment%' OR message ILIKE '%Career Assessment%') AND (category IS NULL OR category = 'SUPPORT');
     `);
 
     // Ticket Messages table for chat box
@@ -230,11 +233,13 @@ const runMigrations = async () => {
         title VARCHAR(255) NOT NULL,
         slug VARCHAR(255) UNIQUE NOT NULL,
         status VARCHAR(20) DEFAULT 'DRAFT',
+        nav_visibility VARCHAR(50) DEFAULT 'navbar',
         seo_title VARCHAR(255),
         seo_description TEXT,
         content JSONB DEFAULT '{}',
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+      ALTER TABLE pages ADD COLUMN IF NOT EXISTS nav_visibility VARCHAR(50) DEFAULT 'navbar';
     `);
 
     // Interactive Guides tables
@@ -1361,6 +1366,28 @@ app.post('/api/v1/lead/create', async (req, res) => {
     if (!legacyName) legacyName = 'Unnamed Lead';
     body.name = legacyName;
 
+    const serviceMap = {
+      studyAbroad: "Study Abroad",
+      workpermit: "Work Permit",
+      touristVisa: "Tourist Visa",
+      examBooking: "Exam Booking",
+      training: "Training Courses"
+    };
+
+    if (body.service && serviceMap[body.service]) {
+      body.subject = serviceMap[body.service];
+    } else if (body.service && !body.subject) {
+      body.subject = body.service;
+    }
+
+    const columns = [
+      'name', 'email', 'phone', 'first_name', 'middle_name', 'last_name', 
+      'dob', 'gender', 'location', 'address', 'emergency_contact_name', 
+      'emergency_contact_phone', 'emergency_contact_relation', 'service', 
+      'subject', 'message', 'country', 'program', 'visa_rejection', 
+      'travel_history', 'exam_type', 'ebd', 'anyspecificlocation', 'payment', 'status'
+    ];
+
     let newLead;
     let existingLead = null;
     if (body.email) {
@@ -1826,6 +1853,24 @@ app.post('/api/leads', async (req, res) => {
     const safeSubject = subject || 'Lead Inquiry';
     const safeMessage = message || subject || 'New Lead Form Submission';
     const inputService = service || (subject === 'Career Assessment Inquiry' ? 'training' : null);
+
+    const isCareerAssessment = safeSubject.toLowerCase().includes('career assessment') || (safeMessage && safeMessage.toLowerCase().includes('career assessment'));
+
+    // If Career Assessment, do NOT create entry in leads table - route strictly to Tickets!
+    if (isCareerAssessment) {
+      const ticketRes = await db.query(
+        `INSERT INTO tickets (user_id, name, email, subject, message, priority, status, category)
+         VALUES ($1, $2, $3, $4, $5, 'HIGH', 'OPEN', 'CAREER_ASSESSMENT') RETURNING *`,
+        [userId || null, name, email, safeSubject, safeMessage]
+      );
+      if (ticketRes.rows.length > 0) {
+        await db.query(
+          `INSERT INTO ticket_messages (ticket_id, sender_type, sender_name, message) VALUES ($1, 'USER', $2, $3)`,
+          [ticketRes.rows[0].id, name || 'User', safeMessage]
+        );
+      }
+      return res.json({ success: true, message: 'Career assessment inquiry processed', ticket: ticketRes.rows[0] });
+    }
 
     let leadRow;
     if (email) {
@@ -3144,9 +3189,12 @@ app.get('/api/v1/mock-test/user/registrations', async (req, res) => {
 // POST /api/v1/order/initiate-payment - PhonePe Payment Gateway Initiation
 app.post('/api/v1/order/initiate-payment', async (req, res) => {
   try {
-    const { name, email, phone, courseId, productType, amount, returnUrl } = req.body;
+    const { name, email, phone, courseId, productType, amount, returnUrl, date, selectedDate } = req.body;
 
-    const backendUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+    let backendUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+    if (backendUrl.includes('localhost') && (process.env.PUBLIC_URL || process.env.REACT_APP_API_URL)) {
+      backendUrl = (process.env.PUBLIC_URL || process.env.REACT_APP_API_URL).replace(/\/+$/, '');
+    }
     const originUrl = returnUrl || req.get('referer');
     const merchantOrderId = `ORD_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     const paymentAmount = amount !== undefined ? Math.round(parseFloat(amount) * 100) : 100000; // Default ₹1000 (100000 paise)
@@ -3164,20 +3212,48 @@ app.post('/api/v1/order/initiate-payment', async (req, res) => {
         amount INT NOT NULL,
         status VARCHAR(50) DEFAULT 'PENDING',
         return_url VARCHAR(1000),
+        assessment_date VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Ensure return_url column exists
+    // Ensure columns exist
     try {
       await db.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS return_url VARCHAR(1000)`);
+      await db.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS assessment_date VARCHAR(100)`);
     } catch (e) {}
 
+    const assessmentDate = date || selectedDate || '';
+
     await db.query(
-      `INSERT INTO orders (merchant_transaction_id, name, email, phone, course_id, product_type, amount, status, return_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING', $8)`,
-      [merchantOrderId, name, email, phone || '9999999999', courseId || 'COURSE', productType || 'course', paymentAmount / 100, originUrl]
+      `INSERT INTO orders (merchant_transaction_id, name, email, phone, course_id, product_type, amount, status, return_url, assessment_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING', $8, $9)`,
+      [merchantOrderId, name, email, phone || '9999999999', courseId || 'COURSE', productType || 'course', paymentAmount / 100, originUrl, assessmentDate || null]
     );
+
+    // If Career Assessment, create a dedicated Support Ticket with category 'CAREER_ASSESSMENT' and selected date
+    if (productType === 'CAREER_ASSESSMENT' || courseId === 'CAREER_ASSESSMENT') {
+      try {
+        const assessmentDate = date || selectedDate || '';
+        const ticketSubject = `Career Assessment Booking${assessmentDate ? ` - ${assessmentDate}` : ''}`;
+        const ticketMsg = `Selected Assessment Date: ${assessmentDate || 'Not specified'}\nCandidate: ${name}\nPhone: ${phone || ''}\nFee: ₹${paymentAmount / 100}\nOrder ID: ${merchantOrderId}`;
+        
+        const ticketRes = await db.query(
+          `INSERT INTO tickets (name, email, subject, message, priority, status, category, assessment_date)
+           VALUES ($1, $2, $3, $4, 'HIGH', 'OPEN', 'CAREER_ASSESSMENT', $5) RETURNING id`,
+          [name, email, ticketSubject, ticketMsg, assessmentDate]
+        );
+        if (ticketRes.rows.length > 0) {
+          const tId = ticketRes.rows[0].id;
+          await db.query(
+            `INSERT INTO ticket_messages (ticket_id, sender_type, sender_name, message) VALUES ($1, 'USER', $2, $3)`,
+            [tId, name, ticketMsg]
+          );
+        }
+      } catch (tErr) {
+        console.error('Failed to create assessment support ticket:', tErr);
+      }
+    }
 
     const redirectCallbackUrl = `${backendUrl}/api/v1/order/payment-callback?transactionId=${merchantOrderId}${originUrl ? `&originUrl=${encodeURIComponent(originUrl)}` : ''}`;
 
@@ -3185,7 +3261,9 @@ app.post('/api/v1/order/initiate-payment', async (req, res) => {
     if (process.env.PHONEPE_CLIENT_ID && process.env.PHONEPE_CLIENT_SECRET) {
       try {
         const token = await getPhonePeAccessToken();
-        const hostUrl = process.env.PHONEPE_HOST_URL || 'https://api.phonepe.com/apis/pg';
+        const v2HostUrl = (process.env.PHONEPE_HOST_URL && process.env.PHONEPE_HOST_URL.includes('/pg') && !process.env.PHONEPE_HOST_URL.includes('/pg-sandbox'))
+          ? process.env.PHONEPE_HOST_URL
+          : 'https://api.phonepe.com/apis/pg';
         const payload = {
           merchantOrderId,
           amount: paymentAmount,
@@ -3208,7 +3286,7 @@ app.post('/api/v1/order/initiate-payment', async (req, res) => {
           headers['X-MERCHANT-ID'] = process.env.PHONEPE_MERCHANT_ID;
         }
 
-        const response = await fetch(`${hostUrl}/checkout/v2/pay`, {
+        const response = await fetch(`${v2HostUrl}/checkout/v2/pay`, {
           method: 'POST',
           headers,
           body: JSON.stringify(payload)
@@ -3222,19 +3300,9 @@ app.post('/api/v1/order/initiate-payment', async (req, res) => {
           return res.json({ success: true, redirectUrl, merchantTransactionId: merchantOrderId, orderId: responseData.orderId });
         }
 
-        // If V2 was attempted with Client ID/Secret but failed, return PhonePe V2 error details
-        const errorMsg = responseData.message || responseData.error || responseData.code || responseData.detail || JSON.stringify(responseData);
-        return res.status(400).json({
-          success: false,
-          message: `PhonePe V2 Error (${responseData.code || response.status}): ${errorMsg}`,
-          data: responseData
-        });
+        console.warn('PhonePe V2 did not return redirectUrl, falling back to V1 Standard Pay:', responseData);
       } catch (v2Err) {
-        console.error('PhonePe V2 Flow Exception:', v2Err);
-        return res.status(500).json({
-          success: false,
-          message: `PhonePe V2 Auth Exception: ${v2Err.message}`
-        });
+        console.warn('PhonePe V2 Flow Exception, falling back to V1 Standard Pay:', v2Err.message);
       }
     }
 
@@ -3242,7 +3310,9 @@ app.post('/api/v1/order/initiate-payment', async (req, res) => {
     const merchantId = process.env.PHONEPE_MERCHANT_ID || 'PGTESTPAYUAT86';
     const saltKey = process.env.PHONEPE_SALT_KEY || '9643446-0b55-4e0b-b762-a115b22f7c3a';
     const saltIndex = process.env.PHONEPE_SALT_INDEX || '1';
-    const hostUrl = process.env.PHONEPE_HOST_URL || 'https://api-preprod.phonepe.com/apis/pg-sandbox';
+    const v1HostUrl = (process.env.PHONEPE_HOST_URL && process.env.PHONEPE_HOST_URL.includes('/hermes'))
+      ? process.env.PHONEPE_HOST_URL
+      : 'https://api.phonepe.com/apis/hermes';
 
     const payload = {
       merchantId: merchantId,
@@ -3263,9 +3333,9 @@ app.post('/api/v1/order/initiate-payment', async (req, res) => {
     const sha256 = crypto.createHash('sha256').update(stringToSign).digest('hex');
     const checksum = `${sha256}###${saltIndex}`;
 
-    console.log('Initiating PhonePe V1 Standard Pay at:', `${hostUrl}/pg/v1/pay`);
+    console.log('Initiating PhonePe V1 Standard Pay at:', `${v1HostUrl}/pg/v1/pay`);
 
-    const response = await fetch(`${hostUrl}/pg/v1/pay`, {
+    const response = await fetch(`${v1HostUrl}/pg/v1/pay`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -3438,22 +3508,22 @@ app.get('/api/v1/order/user-orders', async (req, res) => {
     let result;
     if (email && phone) {
       result = await db.query(
-        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, created_at as "createdAt" FROM orders WHERE LOWER(email) = LOWER($1) OR phone = $2 ORDER BY id DESC',
+        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, assessment_date as "assessmentDate", created_at as "createdAt" FROM orders WHERE LOWER(email) = LOWER($1) OR phone = $2 ORDER BY id DESC',
         [email, phone]
       );
     } else if (email) {
       result = await db.query(
-        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, created_at as "createdAt" FROM orders WHERE LOWER(email) = LOWER($1) ORDER BY id DESC',
+        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, assessment_date as "assessmentDate", created_at as "createdAt" FROM orders WHERE LOWER(email) = LOWER($1) ORDER BY id DESC',
         [email]
       );
     } else if (phone) {
       result = await db.query(
-        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, created_at as "createdAt" FROM orders WHERE phone = $1 ORDER BY id DESC',
+        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, assessment_date as "assessmentDate", created_at as "createdAt" FROM orders WHERE phone = $1 ORDER BY id DESC',
         [phone]
       );
     } else {
       result = await db.query(
-        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, created_at as "createdAt" FROM orders ORDER BY id DESC LIMIT 50'
+        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, assessment_date as "assessmentDate", created_at as "createdAt" FROM orders ORDER BY id DESC LIMIT 50'
       );
     }
 
@@ -3472,7 +3542,7 @@ app.get('/api/v1/order/user-orders', async (req, res) => {
 app.get('/api/v1/order/all-orders', async (req, res) => {
   try {
     const result = await db.query(
-      'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, created_at as "createdAt" FROM orders ORDER BY id DESC'
+      'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, assessment_date as "assessmentDate", created_at as "createdAt" FROM orders ORDER BY id DESC'
     );
     res.json({ success: true, orders: result.rows });
   } catch (err) {
@@ -4564,7 +4634,8 @@ app.post('/api/admin/tickets/bulk-delete', async (req, res) => {
   }
   try {
     const cleanIds = ids.map(Number).filter(n => !isNaN(n));
-    await db.query('DELETE FROM support_tickets WHERE id = ANY($1)', [cleanIds]);
+    await db.query('DELETE FROM ticket_messages WHERE ticket_id = ANY($1)', [cleanIds]);
+    await db.query('DELETE FROM tickets WHERE id = ANY($1)', [cleanIds]);
     res.json({ success: true, message: `${ids.length} support tickets deleted successfully` });
   } catch (err) {
     console.error('Bulk delete tickets error:', err);

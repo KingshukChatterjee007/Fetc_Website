@@ -17,13 +17,23 @@ const AdminLayout = () => {
   const isCollapsed = false;
   const navigate = useNavigate();
   const location = useLocation();
-  const [userData, setUserData] = useState(() =>
-    JSON.parse(localStorage.getItem('user') || '{"name":"Admin","role":"ADMIN"}')
-  );
+  const [userData, setUserData] = useState(() => {
+    try {
+      const u = localStorage.getItem('user');
+      return u ? JSON.parse(u) : null;
+    } catch {
+      return null;
+    }
+  });
 
   useEffect(() => {
     const handleUserUpdate = () => {
-      setUserData(JSON.parse(localStorage.getItem('user') || '{"name":"Admin","role":"ADMIN"}'));
+      try {
+        const u = localStorage.getItem('user');
+        setUserData(u ? JSON.parse(u) : null);
+      } catch {
+        setUserData(null);
+      }
     };
     window.addEventListener("user-login", handleUserUpdate);
     window.addEventListener("user-logout", handleUserUpdate);
@@ -33,10 +43,23 @@ const AdminLayout = () => {
     };
   }, []);
 
-  const isInstructor = userData?.role === 'INSTRUCTOR';
+  const userRole = userData?.role;
+  const isAdmin = userRole === 'ADMIN';
+  const isInstructor = userRole === 'INSTRUCTOR';
 
-  // Route protection for Instructor
+  // Strict route protection: Admin panel & Lead management is strictly for ADMIN and INSTRUCTOR, not USER
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!userData && !token) {
+      navigate('/my-account', { replace: true });
+      return;
+    }
+
+    if (userData && !isAdmin && !isInstructor) {
+      navigate('/dashboard/profile', { replace: true });
+      return;
+    }
+
     if (isInstructor) {
       const allowedPaths = [
         '/admin/news-flash',
@@ -47,10 +70,10 @@ const AdminLayout = () => {
       ];
       const isAllowed = allowedPaths.some(p => location.pathname.startsWith(p));
       if (!isAllowed) {
-        navigate('/admin/news-flash', { replace: true });
+        navigate('/admin/leads', { replace: true });
       }
     }
-  }, [isInstructor, location.pathname, navigate]);
+  }, [userData, isAdmin, isInstructor, location.pathname, navigate]);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -184,6 +207,14 @@ const AdminLayout = () => {
       </div>
     </div>
   );
+
+  if (!isAdmin && !isInstructor) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex relative">

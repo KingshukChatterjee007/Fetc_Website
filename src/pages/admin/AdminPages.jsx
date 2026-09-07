@@ -155,7 +155,7 @@ const AdminPages = () => {
   const getCategory = (slug) => {
     const s = slug ? slug.toLowerCase() : '';
     if (s === '/' || s === '/home' || s === 'home') return 'Home';
-    if (s.startsWith('/about') || s === '/gallery') return 'About Us';
+    if (s.startsWith('/about') || s === '/gallery' || s === '/contact') return 'About Us';
     if (s.startsWith('/study-abroad')) return 'Study Abroad';
     if (s.includes('career-assessment')) return 'Career Assessment';
     if (s.startsWith('/mock')) return 'Exam & Training';
