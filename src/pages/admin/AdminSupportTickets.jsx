@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Ticket, Search, Loader2, Mail, Clock, CheckCircle, User, X, MessageSquare, Send, ExternalLink, Trash2 } from 'lucide-react';
+import { Ticket, Search, Loader2, Mail, Clock, CheckCircle, User, X, MessageSquare, Send, ExternalLink, Trash2, Calendar, ArrowUpDown } from 'lucide-react';
 
 const AdminSupportTickets = () => {
   const [tickets, setTickets] = useState([]);
@@ -10,6 +10,10 @@ const AdminSupportTickets = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [dateFilterPreset, setDateFilterPreset] = useState("ALL");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [sortOrder, setSortOrder] = useState("DESC");
   const [replyText, setReplyText] = useState("");
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [notification, setNotification] = useState(null);
@@ -240,17 +244,80 @@ const AdminSupportTickets = () => {
     }
   }, [selectedTicket?.id]);
 
-  const filteredTickets = tickets.filter(ticket => {
-    const matchesSearch = (
-      ticket.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (ticket.name && ticket.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (ticket.email && ticket.email.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+  const isDateInRange = (dateStr) => {
+    if (dateFilterPreset === 'ALL' && !startDate && !endDate) return true;
+    if (!dateStr) return false;
 
-    const matchesStatus = statusFilter === "ALL" || ticket.status === statusFilter;
+    const ticketDate = new Date(dateStr);
+    if (isNaN(ticketDate.getTime())) return false;
 
-    return matchesSearch && matchesStatus;
-  });
+    const now = new Date();
+
+    if (dateFilterPreset === 'TODAY') {
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      return ticketDate >= todayStart && ticketDate <= todayEnd;
+    }
+
+    if (dateFilterPreset === 'YESTERDAY') {
+      const yestStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0);
+      const yestEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+      return ticketDate >= yestStart && ticketDate <= yestEnd;
+    }
+
+    if (dateFilterPreset === 'LAST_7_DAYS') {
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return ticketDate >= sevenDaysAgo && ticketDate <= now;
+    }
+
+    if (dateFilterPreset === 'LAST_30_DAYS') {
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      return ticketDate >= thirtyDaysAgo && ticketDate <= now;
+    }
+
+    if (dateFilterPreset === 'THIS_MONTH') {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+      return ticketDate >= monthStart && ticketDate <= now;
+    }
+
+    // Custom date range (or manual dates)
+    if (startDate) {
+      const start = new Date(startDate + "T00:00:00");
+      if (ticketDate < start) return false;
+    }
+
+    if (endDate) {
+      const end = new Date(endDate + "T23:59:59.999");
+      if (ticketDate > end) return false;
+    }
+
+    return true;
+  };
+
+  const handleClearDateFilter = () => {
+    setDateFilterPreset("ALL");
+    setStartDate("");
+    setEndDate("");
+  };
+
+  const filteredTickets = tickets
+    .filter(ticket => {
+      const matchesSearch = (
+        ticket.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (ticket.name && ticket.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (ticket.email && ticket.email.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+
+      const matchesStatus = statusFilter === "ALL" || ticket.status === statusFilter;
+      const matchesDate = isDateInRange(ticket.created_at);
+
+      return matchesSearch && matchesStatus && matchesDate;
+    })
+    .sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return sortOrder === 'DESC' ? dateB - dateA : dateA - dateB;
+    });
 
   const getPriorityColor = (priority) => {
     switch (priority) {
@@ -311,14 +378,25 @@ const AdminSupportTickets = () => {
                 {/* Scrollable Content */}
                 <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50/40">
                   {/* User Info Bar */}
-                  <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
-                    <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 shrink-0 font-bold text-xs">
-                      <User size={16} />
+                  <div className="flex items-center justify-between gap-3 p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 shrink-0 font-bold text-xs">
+                        <User size={16} />
+                      </div>
+                      <div className="overflow-hidden">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Student Name</p>
+                        <p className="text-xs font-bold text-slate-900 truncate">{selectedTicket.name || 'Anonymous'}</p>
+                      </div>
                     </div>
-                    <div className="overflow-hidden">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Student Name</p>
-                      <p className="text-xs font-bold text-slate-900 truncate">{selectedTicket.name || 'Anonymous'}</p>
-                    </div>
+                    {selectedTicket.created_at && (
+                      <div className="text-right shrink-0">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Submitted On</p>
+                        <p className="text-xs font-semibold text-slate-700 flex items-center gap-1 justify-end">
+                          <Calendar size={12} className="text-brand-600" />
+                          {new Date(selectedTicket.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Live Chat Box Thread */}
@@ -489,6 +567,98 @@ const AdminSupportTickets = () => {
           {isLoading && <Loader2 className="animate-spin text-brand-600" size={18} />}
         </div>
 
+        {/* Date Filter & Sort Toolbar */}
+        <div className="px-8 py-3.5 bg-slate-50/75 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 text-slate-500 font-semibold mr-1">
+              <Calendar size={14} className="text-brand-600" />
+              <span>Date:</span>
+            </div>
+
+            {/* Presets */}
+            <div className="flex flex-wrap items-center gap-1 bg-white border border-slate-200/90 p-1 rounded-xl shadow-2xs">
+              {[
+                { key: 'ALL', label: 'All Dates' },
+                { key: 'TODAY', label: 'Today' },
+                { key: 'YESTERDAY', label: 'Yesterday' },
+                { key: 'LAST_7_DAYS', label: 'Last 7 Days' },
+                { key: 'LAST_30_DAYS', label: 'Last 30 Days' },
+                { key: 'THIS_MONTH', label: 'This Month' },
+                { key: 'CUSTOM', label: 'Custom Range' },
+              ].map((preset) => (
+                <button
+                  key={preset.key}
+                  onClick={() => {
+                    setDateFilterPreset(preset.key);
+                    if (preset.key !== 'CUSTOM') {
+                      setStartDate('');
+                      setEndDate('');
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    dateFilterPreset === preset.key
+                      ? 'bg-brand-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Custom Range Inputs */}
+            {dateFilterPreset === 'CUSTOM' && (
+              <div className="flex items-center gap-2 bg-white border border-slate-200/90 px-3 py-1.5 rounded-xl shadow-2xs">
+                <label className="text-[10px] uppercase font-bold text-slate-400">From</label>
+                <input 
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="text-xs text-slate-700 bg-transparent focus:outline-none border-b border-slate-200 focus:border-brand-500 py-0.5"
+                />
+                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">To</label>
+                <input 
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="text-xs text-slate-700 bg-transparent focus:outline-none border-b border-slate-200 focus:border-brand-500 py-0.5"
+                />
+              </div>
+            )}
+
+            {/* Clear Button */}
+            {(dateFilterPreset !== 'ALL' || startDate || endDate) && (
+              <button
+                onClick={handleClearDateFilter}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200/60 rounded-xl transition-colors cursor-pointer"
+                title="Reset date filter"
+              >
+                <X size={12} /> Clear Date
+              </button>
+            )}
+          </div>
+
+          {/* Right Controls: Sort Order & Count */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 bg-white border border-slate-200/90 px-3 py-1.5 rounded-xl shadow-2xs">
+              <ArrowUpDown size={13} className="text-slate-400" />
+              <span className="text-xs text-slate-500 font-medium">Sort:</span>
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value)}
+                className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
+              >
+                <option value="DESC">Newest First</option>
+                <option value="ASC">Oldest First</option>
+              </select>
+            </div>
+
+            <span className="text-xs font-semibold text-slate-500 bg-white border border-slate-200/80 px-3 py-1.5 rounded-xl shadow-2xs">
+              Showing <span className="font-bold text-slate-800">{filteredTickets.length}</span> {filteredTickets.length === 1 ? 'ticket' : 'tickets'}
+            </span>
+          </div>
+        </div>
+
         {/* Tickets Grid */}
         <div className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -538,6 +708,18 @@ const AdminSupportTickets = () => {
                     <span className="text-[10px] text-slate-400 opacity-80 flex items-center gap-1 mt-0.5">
                       <Mail size={10} /> {ticket.email}
                     </span>
+                    {ticket.created_at && (
+                      <span className="text-[10px] text-slate-500 font-medium flex items-center gap-1 mt-1 bg-slate-100/90 px-2 py-0.5 rounded-md w-fit">
+                        <Calendar size={11} className="text-brand-600" />
+                        {new Date(ticket.created_at).toLocaleDateString('en-GB', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -595,8 +777,20 @@ const AdminSupportTickets = () => {
               <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Ticket className="text-blue-600" size={24} />
               </div>
-              <h3 className="text-lg font-semibold text-slate-800 mb-1">All clear!</h3>
-              <p className="text-slate-400 text-sm italic">There are no matching support tickets.</p>
+              <h3 className="text-lg font-semibold text-slate-800 mb-1">No tickets match your filters</h3>
+              <p className="text-slate-400 text-sm italic mb-4">Try adjusting your date range, search query, or status filter.</p>
+              {(dateFilterPreset !== 'ALL' || startDate || endDate || searchTerm || statusFilter !== 'ALL') && (
+                <button
+                  onClick={() => {
+                    handleClearDateFilter();
+                    setSearchTerm('');
+                    setStatusFilter('ALL');
+                  }}
+                  className="px-4 py-2 bg-brand-50 text-brand-600 hover:bg-brand-100 rounded-xl text-xs font-bold transition-all"
+                >
+                  Reset All Filters
+                </button>
+              )}
             </div>
           )}
         </div>

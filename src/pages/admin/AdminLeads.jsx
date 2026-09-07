@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserCheck, Search, Mail, Calendar, Loader2, CheckCircle, Clock, RotateCcw, Trash2, AlertTriangle, Edit, Phone, MapPin, Upload, Download, Plus, X } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 const docFieldsByService = {
   studyAbroad: [
@@ -270,103 +271,109 @@ const AdminLeads = () => {
     return true;
   });
 
-  const handleExportCSV = () => {
+  const handleExportExcel = () => {
     if (leads.length === 0) return;
-    const headers = ["First Name", "Last Name", "Gender", "Email", "Phone", "Subject", "Location", "Status", "Date"];
-    const rows = leads.map(lead => {
+    const exportData = leads.map(lead => {
       const nameParts = (lead.name || "").trim().split(/\s+/);
       const firstName = nameParts[0] || "";
       const lastName = nameParts.slice(1).join(" ") || "";
-      return [
-        firstName,
-        lastName,
-        lead.gender || "",
-        lead.email || "",
-        lead.phone || "",
-        lead.subject || lead.message || "",
-        lead.location || "",
-        lead.status || "",
-        lead.created_at ? new Date(lead.created_at).toLocaleDateString() : ""
-      ];
+      return {
+        "First Name": firstName,
+        "Last Name": lastName,
+        "Gender": lead.gender || "",
+        "Email": lead.email || "",
+        "Phone": lead.phone || "",
+        "Subject / Service": lead.subject || lead.message || "",
+        "Location": lead.location || "",
+        "Status": lead.status || "",
+        "Date": lead.created_at ? new Date(lead.created_at).toLocaleDateString() : ""
+      };
     });
 
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + [headers.join(","), ...rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `leads_export_${new Date().toISOString().slice(0,10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Leads");
+    XLSX.writeFile(workbook, `leads_export_${new Date().toISOString().slice(0,10)}.xlsx`);
   };
 
-  const handleCSVUpload = (e) => {
+  const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
-        const text = evt.target.result;
-        const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
-        if (lines.length <= 1) return;
-        
-        const headers = lines[0].split(",").map(h => h.replace(/^["']|["']$/g, "").trim().toLowerCase());
-        const importedLeads = [];
-        
-        for (let i = 1; i < lines.length; i++) {
-          const matches = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(",");
-          const values = matches.map(v => v.replace(/^["']|["']$/g, "").replace(/""/g, '"').trim());
-          
-          const leadObj = {};
-          headers.forEach((header, idx) => {
-            const val = values[idx] || "";
-            if (header.includes("first name") || header === "first") leadObj.firstName = val;
-            else if (header.includes("last name") || header === "last") leadObj.lastName = val;
-            else if (header === "name") leadObj.name = val;
-            else if (header === "email") leadObj.email = val;
-            else if (header === "phone") leadObj.phone = val;
-            else if (header === "gender") leadObj.gender = val;
-            else if (header === "location") leadObj.location = val;
-            else if (header === "subject" || header === "service") leadObj.subject = val;
-            else if (header === "message") leadObj.message = val;
-          });
-          
-          if (!leadObj.name && (leadObj.firstName || leadObj.lastName)) {
-            leadObj.name = `${leadObj.firstName || ""} ${leadObj.lastName || ""}`.trim();
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+        if (!jsonData || jsonData.length === 0) {
+          alert("Uploaded file contains no data rows.");
+          return;
+        }
+
+        const importedLeads = jsonData.map((row, idx) => {
+          const keys = Object.keys(row);
+          const getVal = (...headers) => {
+            const matchedKey = keys.find(k =>
+              headers.some(h => k.trim().toLowerCase() === h.toLowerCase() || k.trim().toLowerCase().includes(h.toLowerCase()))
+            );
+            return matchedKey ? String(row[matchedKey]).trim() : "";
+          };
+
+          const firstName = getVal("first name", "firstname", "first");
+          const lastName = getVal("last name", "lastname", "last");
+          let name = getVal("name", "full name", "lead name");
+          if (!name && (firstName || lastName)) {
+            name = `${firstName} ${lastName}`.trim();
           }
-          if (!leadObj.name) leadObj.name = "Unnamed CSV Lead";
-          if (!leadObj.email) leadObj.email = "no-email@csv-import.com";
-          
-          importedLeads.push(leadObj);
-        }
-        
+          if (!name) name = `Excel Lead ${idx + 1}`;
+
+          const email = getVal("email", "email address", "mail") || "no-email@excel-import.com";
+          const phone = getVal("phone", "phone number", "mobile", "contact");
+          const gender = getVal("gender", "sex");
+          const location = getVal("location", "city", "address");
+          const subject = getVal("subject", "service", "area of interest", "course");
+          const message = getVal("message", "notes", "remarks") || "Imported from Excel file.";
+
+          return { name, email, phone, gender, location, subject, message };
+        });
+
         setIsLoading(true);
+        let successCount = 0;
         for (const lead of importedLeads) {
-          await fetch((window.API_BASE||'') + '/api/leads', {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: lead.name,
-              email: lead.email,
-              phone: lead.phone || "",
-              subject: lead.subject || "CSV Imported Lead",
-              message: lead.message || "Imported from CSV file.",
-              gender: lead.gender || "",
-              location: lead.location || ""
-            })
-          });
+          try {
+            await fetch((window.API_BASE || '') + '/api/leads', {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: lead.name,
+                email: lead.email,
+                phone: lead.phone || "",
+                subject: lead.subject || "Excel Imported Lead",
+                message: lead.message,
+                gender: lead.gender || "",
+                location: lead.location || ""
+              })
+            });
+            successCount++;
+          } catch (err) {
+            console.error("Failed to import individual lead:", lead, err);
+          }
         }
-        
+
         await fetchLeads();
+        alert(`Successfully imported ${successCount} out of ${importedLeads.length} leads!`);
       } catch (err) {
-        console.error("Failed to parse CSV:", err);
-        alert("Failed to parse CSV. Please verify that the file layout is correct.");
+        console.error("Failed to parse Excel file:", err);
+        alert("Failed to parse file. Please make sure it is a valid .xlsx, .xls, or .csv file.");
       } finally {
         setIsLoading(false);
+        e.target.value = "";
       }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   };
 
   const validateNewLeadFields = (stageKey) => {
@@ -1119,12 +1126,12 @@ const AdminLeads = () => {
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1600px] mx-auto">
 
-      {/* Hidden File Input for CSV Upload */}
+      {/* Hidden File Input for Excel/CSV Upload */}
       <input 
         type="file" 
-        id="csv-file-input" 
-        accept=".csv" 
-        onChange={handleCSVUpload} 
+        id="excel-file-input" 
+        accept=".xlsx, .xls, .csv" 
+        onChange={handleFileUpload} 
         className="hidden" 
       />
 
@@ -1135,13 +1142,13 @@ const AdminLeads = () => {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={handleExportCSV}
+            onClick={handleExportExcel}
             className="px-4 py-2.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl font-bold text-xs flex items-center gap-2 transition-all shadow-sm active:scale-95"
           >
             <Download size={14} /> Export Excel
           </button>
           <button
-            onClick={() => document.getElementById('csv-file-input').click()}
+            onClick={() => document.getElementById('excel-file-input').click()}
             className="px-4 py-2.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl font-bold text-xs flex items-center gap-2 transition-all shadow-sm active:scale-95"
           >
             <Upload size={14} /> Upload
