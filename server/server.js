@@ -1832,6 +1832,24 @@ app.post('/api/leads', async (req, res) => {
     const safeMessage = message || subject || 'New Lead Form Submission';
     const inputService = service || (subject === 'Career Assessment Inquiry' ? 'training' : null);
 
+    const isCareerAssessment = safeSubject.toLowerCase().includes('career assessment') || (safeMessage && safeMessage.toLowerCase().includes('career assessment'));
+
+    // If Career Assessment, do NOT create entry in leads table - route strictly to Tickets!
+    if (isCareerAssessment) {
+      const ticketRes = await db.query(
+        `INSERT INTO tickets (user_id, name, email, subject, message, priority, status, category)
+         VALUES ($1, $2, $3, $4, $5, 'HIGH', 'OPEN', 'CAREER_ASSESSMENT') RETURNING *`,
+        [userId || null, name, email, safeSubject, safeMessage]
+      );
+      if (ticketRes.rows.length > 0) {
+        await db.query(
+          `INSERT INTO ticket_messages (ticket_id, sender_type, sender_name, message) VALUES ($1, 'USER', $2, $3)`,
+          [ticketRes.rows[0].id, name || 'User', safeMessage]
+        );
+      }
+      return res.json({ success: true, message: 'Career assessment inquiry processed', ticket: ticketRes.rows[0] });
+    }
+
     let leadRow;
     if (email) {
       const existing = await db.query('SELECT * FROM leads WHERE LOWER(email) = LOWER($1) ORDER BY id DESC LIMIT 1', [email.trim()]);
