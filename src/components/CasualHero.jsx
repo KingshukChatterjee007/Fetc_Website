@@ -43,10 +43,17 @@ const CasualHero = ({ content }) => {
     }
   ];
 
-  const customBanners = content?.banners || (content?.bgImage ? [content.bgImage] : null);
+  const rawBanners = content?.banners || (content?.bgImage ? [content.bgImage] : null);
+  const validCustomBanners = Array.isArray(rawBanners) 
+    ? rawBanners.filter(img => {
+        if (!img) return false;
+        if (typeof img === 'string') return img.trim() !== '';
+        return Boolean(img.url || img.image);
+      })
+    : null;
 
-  const slides = (customBanners && Array.isArray(customBanners) && customBanners.length > 0)
-    ? customBanners.map((img, idx) => ({
+  const slides = (validCustomBanners && validCustomBanners.length > 0)
+    ? validCustomBanners.map((img, idx) => ({
         image: typeof img === 'string' ? getAssetUrl(img) : getAssetUrl(img.url || img.image || img),
         field: `Banner ${idx + 1}`,
         position: "object-right"
@@ -55,7 +62,7 @@ const CasualHero = ({ content }) => {
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % slides.length);
+      setCurrentIndex((prev) => (prev + 1) % (slides.length || 1));
     }, 6000);
     return () => clearInterval(timer);
   }, [slides.length]);
@@ -90,8 +97,12 @@ const CasualHero = ({ content }) => {
             className="absolute inset-0 w-full h-full"
           >
             <img 
-              src={slides[currentIndex]?.image || slides[0]?.image} 
+              src={slides[currentIndex]?.image || defaultSlides[currentIndex % defaultSlides.length]?.image || defaultSlides[0].image} 
               alt={slides[currentIndex]?.field || 'Hero Banner'} 
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = defaultSlides[currentIndex % defaultSlides.length]?.image || defaultSlides[0].image;
+              }}
               className={`w-full h-full object-cover ${slides[currentIndex]?.position || 'object-right'}`}
             />
             {/* Soft gradient overlay to blend left side with white background for maximum text contrast */}

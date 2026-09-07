@@ -12,7 +12,11 @@ const initialPageData = [
     content: {
       hero: {
         badge: "Your Future, Simplified ✨",
-        bgImage: "",
+        banners: [
+          "/assets/logo/banner 1.png",
+          "/assets/logo/banner 2.png",
+          "/assets/logo/banner 3.png"
+        ],
         titleMain: "Dream Big. We'll",
         titleHighlight: "Handle the Rest.",
         subtitle: "Forget the stress of paperwork. We make your journey to international education smooth, fun, and totally achievable.",
@@ -1115,6 +1119,7 @@ exams.forEach(exam => {
 async function seedPages() {
   console.log("🌱 Starting 100% Comprehensive Word-for-Word Page Content Seeder...");
   try {
+    await db.query("SET client_encoding = 'UTF8'");
     for (const page of initialPageData) {
       const existing = await db.query('SELECT id FROM pages WHERE slug = $1', [page.slug]);
       if (existing.rows.length > 0) {
