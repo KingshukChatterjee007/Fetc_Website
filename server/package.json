@@ -9,6 +9,8 @@
     "seed-home": "node scripts/seeders/seed-home.js",
     "seed-all": "node scripts/seeders/seed-all-data.js",
     "seed:gallery": "node scripts/seeders/seed-gallery.js",
+    "seed:missing": "node scripts/seeders/seed_missing_pages.js",
+    "seed:pages": "node scripts/seeders/seed_page_contents.js",
     "setup": "node scripts/db_tools/ensure_db.js && node scripts/db_tools/init_db.js && node scripts/seeders/seed-all-data.js"
   },
   "keywords": [],

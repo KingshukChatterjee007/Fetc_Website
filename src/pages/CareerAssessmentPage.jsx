@@ -115,6 +115,27 @@ export default function CareerAssessmentPage() {
     setModalFormData({ ...modalFormData, [e.target.name]: e.target.value });
   };
 
+  const handleOpenAssessmentModal = () => {
+    const user = localStorage.getItem("user");
+    if (!user) {
+      alert("Please login first to start the assessment.");
+      navigate("/login");
+      return;
+    }
+
+    try {
+      const parsedUser = JSON.parse(user);
+      setModalFormData(prev => ({
+        ...prev,
+        name: prev.name || parsedUser.name || `${parsedUser.first_name || ''} ${parsedUser.last_name || ''}`.trim() || '',
+        email: prev.email || parsedUser.email || '',
+        phone: prev.phone || parsedUser.phone || ''
+      }));
+    } catch (e) {}
+
+    setIsModalOpen(true);
+  };
+
   const handleModalSubmit = async (e) => {
     e.preventDefault();
 
@@ -126,29 +147,22 @@ export default function CareerAssessmentPage() {
       return;
     }
 
-    setModalIsSubmitting(true);
-    try {
-      await fetch(getApiUrl('/api/leads'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...modalFormData,
-          subject: "Career Assessment Inquiry"
-        }),
-      });
-    } catch (err) {
-      console.error('Lead submission notice:', err);
-    } finally {
-      setModalIsSubmitting(false);
-      setIsModalOpen(false);
-      setShowPaymentModal(true);
-    }
+    // Directly proceed to payment modal without creating a lead
+    setIsModalOpen(false);
+    setShowPaymentModal(true);
   };
 
   const handlePayNow = async () => {
     try {
-      setIsRedirectingPayment(true);
+      const user = localStorage.getItem("user");
       const token = localStorage.getItem('token') || localStorage.getItem('authToken');
+      if (!user) {
+        alert("Please login first to make the payment.");
+        navigate("/login");
+        return;
+      }
+
+      setIsRedirectingPayment(true);
       const headers = { 'Content-Type': 'application/json' };
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
@@ -159,7 +173,9 @@ export default function CareerAssessmentPage() {
         courseId: 'CAREER_ASSESSMENT',
         name: modalFormData.name.trim(),
         email: modalFormData.email.trim(),
-        productType: 'MOCK_TEST',
+        date: modalFormData.date,
+        selectedDate: modalFormData.date,
+        productType: 'CAREER_ASSESSMENT',
         amount: Number(assessmentFee) || 1000,
         returnUrl: window.location.href,
       };
@@ -326,7 +342,7 @@ export default function CareerAssessmentPage() {
                         View Matrix Data <ArrowRight size={18} />
                       </button>
                       <button
-                        onClick={() => setIsModalOpen(true)}
+                        onClick={handleOpenAssessmentModal}
                         className="px-6 py-3 bg-blue-600/30 backdrop-blur-md border border-white/20 text-white text-sm font-bold rounded-xl shadow-sm hover:bg-blue-600/50 transition-all inline-flex items-center gap-2 w-fit"
                       >
                         Start Assessment <ArrowRight size={18} />
@@ -548,7 +564,7 @@ export default function CareerAssessmentPage() {
             </div>
             
             <button 
-              onClick={() => setIsModalOpen(true)}
+              onClick={handleOpenAssessmentModal}
               className="group relative px-10 py-5 bg-white text-blue-700 rounded-[2rem] font-black text-sm tracking-widest uppercase shadow-xl hover:shadow-2xl flex items-center gap-3 overflow-hidden"
             >
               <span className="relative z-10">Start Assessment</span>
