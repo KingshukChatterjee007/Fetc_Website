@@ -321,7 +321,7 @@ function StudyAbroadPage() {
                 pdfs: [
                   {
                     label: "Free Education in Italy",
-                    url: "/AA.pdf"
+                    url: "/Free Education in Italy.pdf"
                   }
                 ],
                 details: (
