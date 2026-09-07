@@ -3190,19 +3190,23 @@ app.post('/api/v1/order/initiate-payment', async (req, res) => {
         amount INT NOT NULL,
         status VARCHAR(50) DEFAULT 'PENDING',
         return_url VARCHAR(1000),
+        assessment_date VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Ensure return_url column exists
+    // Ensure columns exist
     try {
       await db.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS return_url VARCHAR(1000)`);
+      await db.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS assessment_date VARCHAR(100)`);
     } catch (e) {}
 
+    const assessmentDate = date || selectedDate || '';
+
     await db.query(
-      `INSERT INTO orders (merchant_transaction_id, name, email, phone, course_id, product_type, amount, status, return_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING', $8)`,
-      [merchantOrderId, name, email, phone || '9999999999', courseId || 'COURSE', productType || 'course', paymentAmount / 100, originUrl]
+      `INSERT INTO orders (merchant_transaction_id, name, email, phone, course_id, product_type, amount, status, return_url, assessment_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING', $8, $9)`,
+      [merchantOrderId, name, email, phone || '9999999999', courseId || 'COURSE', productType || 'course', paymentAmount / 100, originUrl, assessmentDate || null]
     );
 
     // If Career Assessment, create a dedicated Support Ticket with category 'CAREER_ASSESSMENT' and selected date
@@ -3482,22 +3486,22 @@ app.get('/api/v1/order/user-orders', async (req, res) => {
     let result;
     if (email && phone) {
       result = await db.query(
-        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, created_at as "createdAt" FROM orders WHERE LOWER(email) = LOWER($1) OR phone = $2 ORDER BY id DESC',
+        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, assessment_date as "assessmentDate", created_at as "createdAt" FROM orders WHERE LOWER(email) = LOWER($1) OR phone = $2 ORDER BY id DESC',
         [email, phone]
       );
     } else if (email) {
       result = await db.query(
-        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, created_at as "createdAt" FROM orders WHERE LOWER(email) = LOWER($1) ORDER BY id DESC',
+        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, assessment_date as "assessmentDate", created_at as "createdAt" FROM orders WHERE LOWER(email) = LOWER($1) ORDER BY id DESC',
         [email]
       );
     } else if (phone) {
       result = await db.query(
-        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, created_at as "createdAt" FROM orders WHERE phone = $1 ORDER BY id DESC',
+        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, assessment_date as "assessmentDate", created_at as "createdAt" FROM orders WHERE phone = $1 ORDER BY id DESC',
         [phone]
       );
     } else {
       result = await db.query(
-        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, created_at as "createdAt" FROM orders ORDER BY id DESC LIMIT 50'
+        'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, assessment_date as "assessmentDate", created_at as "createdAt" FROM orders ORDER BY id DESC LIMIT 50'
       );
     }
 
@@ -3516,7 +3520,7 @@ app.get('/api/v1/order/user-orders', async (req, res) => {
 app.get('/api/v1/order/all-orders', async (req, res) => {
   try {
     const result = await db.query(
-      'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, created_at as "createdAt" FROM orders ORDER BY id DESC'
+      'SELECT id, merchant_transaction_id as "transactionId", merchant_transaction_id as "_id", name, email, phone, course_id as "courseId", product_type as "productType", amount, status, assessment_date as "assessmentDate", created_at as "createdAt" FROM orders ORDER BY id DESC'
     );
     res.json({ success: true, orders: result.rows });
   } catch (err) {
