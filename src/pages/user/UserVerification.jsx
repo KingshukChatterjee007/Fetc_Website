@@ -283,6 +283,8 @@ function UserVerification() {
         ...leadForm,
         name: `${leadForm.firstName || ''} ${leadForm.lastName || ''}`.trim()
       };
+      // Funnel Lead Status is strictly managed by Admin and Instructor, not student/user
+      delete payload.status;
 
       if (isUpdate) {
         const leadId = lead.id || lead._id;
