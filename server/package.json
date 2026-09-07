@@ -7,9 +7,10 @@
     "dev": "nodemon server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "seed-home": "node scripts/seeders/seed-home.js",
-    "seed-all": "node scripts/seeders/seed-all-data.js",
+    "seed-pages": "node scripts/seeders/seed_page_contents.js",
+    "seed-all": "node scripts/seeders/seed-all-data.js && node scripts/seeders/seed_page_contents.js",
     "seed:gallery": "node scripts/seeders/seed-gallery.js",
-    "setup": "node scripts/db_tools/ensure_db.js && node scripts/db_tools/init_db.js && node scripts/seeders/seed-all-data.js"
+    "setup": "node scripts/db_tools/ensure_db.js && node scripts/db_tools/init_db.js && node scripts/seeders/seed-all-data.js && node scripts/seeders/seed_page_contents.js"
   },
   "keywords": [],
   "author": "",
