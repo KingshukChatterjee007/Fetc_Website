@@ -4,6 +4,7 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 // Force-disable SSL certificate validation (Fix for Supabase/Vercel certificate chain error)
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+process.env.PGCLIENTENCODING = 'utf-8';
 
 
 let connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.Databse_POSTGRES_URL;

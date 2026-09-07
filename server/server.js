@@ -233,11 +233,13 @@ const runMigrations = async () => {
         title VARCHAR(255) NOT NULL,
         slug VARCHAR(255) UNIQUE NOT NULL,
         status VARCHAR(20) DEFAULT 'DRAFT',
+        nav_visibility VARCHAR(50) DEFAULT 'navbar',
         seo_title VARCHAR(255),
         seo_description TEXT,
         content JSONB DEFAULT '{}',
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+      ALTER TABLE pages ADD COLUMN IF NOT EXISTS nav_visibility VARCHAR(50) DEFAULT 'navbar';
     `);
 
     // Interactive Guides tables
