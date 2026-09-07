@@ -1366,6 +1366,28 @@ app.post('/api/v1/lead/create', async (req, res) => {
     if (!legacyName) legacyName = 'Unnamed Lead';
     body.name = legacyName;
 
+    const serviceMap = {
+      studyAbroad: "Study Abroad",
+      workpermit: "Work Permit",
+      touristVisa: "Tourist Visa",
+      examBooking: "Exam Booking",
+      training: "Training Courses"
+    };
+
+    if (body.service && serviceMap[body.service]) {
+      body.subject = serviceMap[body.service];
+    } else if (body.service && !body.subject) {
+      body.subject = body.service;
+    }
+
+    const columns = [
+      'name', 'email', 'phone', 'first_name', 'middle_name', 'last_name', 
+      'dob', 'gender', 'location', 'address', 'emergency_contact_name', 
+      'emergency_contact_phone', 'emergency_contact_relation', 'service', 
+      'subject', 'message', 'country', 'program', 'visa_rejection', 
+      'travel_history', 'exam_type', 'ebd', 'anyspecificlocation', 'payment', 'status'
+    ];
+
     let newLead;
     let existingLead = null;
     if (body.email) {
