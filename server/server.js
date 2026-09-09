@@ -2786,14 +2786,23 @@ app.get('/api/admin/posts', async (req, res) => {
 app.post('/api/admin/posts', async (req, res) => {
   const { title, slug } = req.body;
   try {
-    // POST /api/admin/posts - Create new post
-    // Note: Migration handled at startup
-
     const result = await db.query(
       'INSERT INTO posts (title, slug, status, content) VALUES ($1, $2, $3, $4) RETURNING *',
       [title, slug, 'DRAFT', '{}']
     );
     res.json({ success: true, post: result.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Database error', error: err.message });
+  }
+});
+
+// DELETE /api/admin/posts/:id - Delete post
+app.delete('/api/admin/posts/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM posts WHERE id = $1', [id]);
+    res.json({ success: true, message: 'Post deleted successfully' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Database error', error: err.message });
@@ -3955,24 +3964,6 @@ const ensureCoursesTable = async () => {
   `).catch(() => {});
 
   const countResult = await db.query(`SELECT COUNT(*) FROM courses`);
-  if (parseInt(countResult.rows[0].count) === 0) {
-    const initialCourses = [
-      ['IELTS_MASTERCLASS', 'IELTS Academic Masterclass', 'Comprehensive 8-week IELTS training with live mock feedback.', 'Language Exam', 14999, '8 Weeks', 'All Levels', 'ACTIVE', 48],
-      ['TOEFL_IBT_PREP', 'TOEFL iBT Intensive Training', 'Complete speaking, writing, and listening practice with experts.', 'Language Exam', 12999, '6 Weeks', 'Intermediate', 'ACTIVE', 32],
-      ['PTE_ACADEMIC', 'PTE Academic FastTrack', 'AI-assisted scoring practice and strategies for high bands.', 'Language Exam', 9999, '4 Weeks', 'Intermediate', 'ACTIVE', 27],
-      ['GRE_QUANT_VERBAL', 'GRE Quant & Verbal Success', 'High-score strategy drills, practice tests, and math refresher.', 'Graduate Exam', 18999, '10 Weeks', 'Advanced', 'ACTIVE', 54],
-      ['GMAT_FOCUS_EDITION', 'GMAT Focus Edition Training', 'Data insights, problem-solving, and verbal reasoning mastery.', 'Graduate Exam', 21999, '12 Weeks', 'Advanced', 'ACTIVE', 19],
-      ['SAT_DIGITAL_PREP', 'SAT Digital Preparation Course', 'Module-based adaptive prep for high school study abroad applicants.', 'Undergrad Exam', 11999, '6 Weeks', 'Beginner', 'ACTIVE', 41]
-    ];
-
-    for (const c of initialCourses) {
-      await db.query(`
-        INSERT INTO courses (course_id, title, description, category, price, duration, level, status, students_count)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        ON CONFLICT (course_id) DO NOTHING
-      `, c);
-    }
-  }
 };
 
 // GET all courses

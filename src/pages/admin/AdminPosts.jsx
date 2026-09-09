@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Share2, Plus, Search, Calendar, Loader2, Save, Globe } from 'lucide-react';
+import { Share2, Plus, Search, Calendar, Loader2, Save, Globe, Trash2 } from 'lucide-react';
 
 const AdminPosts = () => {
   const [posts, setPosts] = useState([]);
@@ -29,6 +29,24 @@ const AdminPosts = () => {
   useEffect(() => {
     fetchPosts();
   }, []);
+
+  const handleDeletePost = async (id, e) => {
+    if (e) e.stopPropagation();
+    if (!window.confirm('Are you sure you want to delete this post?')) return;
+    try {
+      const response = await fetch((window.API_BASE||'') + `/api/admin/posts/${id}`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+      if (data.success) {
+        setPosts(posts.filter(p => p.id !== id));
+      } else {
+        alert(data.message || 'Failed to delete post');
+      }
+    } catch (err) {
+      console.error('Delete failed:', err);
+    }
+  };
 
   const handleFinalCreate = async () => {
     if (!newPostData.title || !newPostData.slug) return;
@@ -127,8 +145,14 @@ const AdminPosts = () => {
                     <div className="flex items-center gap-2 text-slate-400 uppercase text-[9px] font-medium tracking-widest opacity-60">
                       <Calendar size={11} /> {new Date(post.created_at).toLocaleDateString()}
                     </div>
-                    <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-md">
-                      <Save size={16} />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => handleDeletePost(post.id, e)}
+                        className="w-8 h-8 rounded-xl bg-red-50 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all shadow-sm"
+                        title="Delete Post"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </div>
                 </motion.div>

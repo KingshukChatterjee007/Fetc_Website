@@ -1,0 +1,27 @@
+{
+  "name": "fetc-database-setup",
+  "version": "1.0.0",
+  "description": "Standalone database creation and seed package for FETC (Foreign English Tests Capital)",
+  "main": "setup.js",
+  "scripts": {
+    "start": "node setup.js",
+    "setup": "node setup.js",
+    "test-db": "node test-connection.js",
+    "export-sql": "node export-sql.js"
+  },
+  "keywords": [
+    "postgresql",
+    "fetc",
+    "seed",
+    "database-setup",
+    "cms",
+    "migration"
+  ],
+  "author": "FETC Engineering Team",
+  "license": "ISC",
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "dotenv": "^16.4.5",
+    "pg": "^8.11.3"
+  }
+}
