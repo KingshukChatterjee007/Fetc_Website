@@ -32,3 +32,6 @@ yarn-error.log*
 /server/uploads/
 
 .vercel
+
+# Database setup standalone package (local only, do not push to GitHub)
+/database-setup/
