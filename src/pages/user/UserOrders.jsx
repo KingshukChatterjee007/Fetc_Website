@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
-import { Loader2, Package, Calendar, Hash, IndianRupee, CreditCard, ShieldCheck } from 'lucide-react';
+import { useOutletContext, useNavigate } from 'react-router-dom';
+import { Loader2, Package, Calendar, Hash, IndianRupee, CreditCard, ShieldCheck, MessageCircle } from 'lucide-react';
 import { getApiUrl } from '../../apiConfig';
 
 const UserOrders = () => {
   const { user } = useOutletContext();
+  const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -188,8 +189,19 @@ const UserOrders = () => {
                   </div>
                 </div>
 
+                {/* Action: Open Support Chat with Instructor */}
+                <div className="pt-2">
+                  <button
+                    onClick={() => navigate('/dashboard/support')}
+                    className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-2.5 px-4 rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow-md active:scale-98"
+                  >
+                    <MessageCircle size={15} />
+                    <span>Chat with Instructor / Support & View Replies</span>
+                  </button>
+                </div>
+
                 {/* Footer badge */}
-                <div className="pt-1 flex items-center justify-between text-[11px] text-slate-400 font-medium border-t border-slate-100">
+                <div className="pt-2 flex items-center justify-between text-[11px] text-slate-400 font-medium border-t border-slate-100">
                   <div className="flex items-center gap-1.5 text-emerald-600">
                     <ShieldCheck size={14} />
                     <span>Verified Payment</span>

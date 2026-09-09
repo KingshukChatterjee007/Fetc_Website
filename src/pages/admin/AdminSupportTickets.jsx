@@ -522,20 +522,22 @@ const AdminSupportTickets = () => {
                     </div>
                   </div>
 
-                  {/* Reply Form / Closed Banner */}
-                  {selectedTicket && (selectedTicket.status?.toUpperCase() === 'RESOLVED' || selectedTicket.status?.toUpperCase() === 'CLOSED') ? (
-                    <div className="p-3.5 bg-emerald-50 border border-emerald-200/80 rounded-2xl flex items-center justify-center gap-2.5 text-emerald-800 text-xs font-bold shadow-2xs">
-                      <CheckCircle size={16} className="text-emerald-600 shrink-0" />
-                      <span>This support ticket is resolved & closed. Conversation ended.</span>
-                    </div>
-                  ) : (
-                    <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-xl">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
-                          <Send size={14} className="text-blue-400" /> Send Response in Chat Box
-                        </h4>
-                        <span className="text-[10px] font-medium text-slate-400">Live Chat</span>
+                  {/* Reply Form Section */}
+                  <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-xl">
+                    {selectedTicket && (selectedTicket.status?.toUpperCase() === 'RESOLVED' || selectedTicket.status?.toUpperCase() === 'CLOSED') && (
+                      <div className="mb-3 p-2.5 bg-emerald-500/15 border border-emerald-500/30 rounded-xl flex items-center justify-between text-xs text-emerald-300">
+                        <div className="flex items-center gap-2 font-bold">
+                          <CheckCircle size={14} className="text-emerald-400" /> Ticket currently marked as Resolved
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-medium">Replying will send to student chat</span>
                       </div>
+                    )}
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+                        <Send size={14} className="text-blue-400" /> Send Response in Chat Box
+                      </h4>
+                      <span className="text-[10px] font-medium text-slate-400">Live Chat</span>
+                    </div>
 
                       <textarea 
                         rows="3"

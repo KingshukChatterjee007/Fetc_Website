@@ -188,6 +188,14 @@ const runMigrations = async () => {
       ALTER TABLE tickets ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'SUPPORT';
       ALTER TABLE tickets ADD COLUMN IF NOT EXISTS assessment_date VARCHAR(100);
       UPDATE tickets SET category = 'CAREER_ASSESSMENT' WHERE (subject ILIKE '%Career Assessment%' OR message ILIKE '%Career Assessment%') AND (category IS NULL OR category = 'SUPPORT');
+      UPDATE tickets t SET user_id = u.id FROM users u WHERE t.user_id IS NULL AND LOWER(TRIM(t.email)) = LOWER(TRIM(u.email));
+      INSERT INTO ticket_messages (ticket_id, sender_type, sender_name, message, created_at)
+      SELECT t.id, 'ADMIN', 'Support Admin', t.admin_reply, COALESCE(t.replied_at, t.created_at)
+      FROM tickets t
+      WHERE t.admin_reply IS NOT NULL 
+        AND NOT EXISTS (
+          SELECT 1 FROM ticket_messages tm WHERE tm.ticket_id = t.id AND tm.sender_type != 'USER'
+        );
     `);
 
     // Ticket Messages table for chat box
@@ -2203,6 +2211,16 @@ app.post('/api/admin/tickets/:id/reply', async (req, res) => {
       [replyMessage, newStatus, id]
     );
 
+    // Also record into ticket_messages so it is immediately visible in the live chat
+    try {
+      await db.query(
+        'INSERT INTO ticket_messages (ticket_id, sender_type, sender_name, message, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)',
+        [id, 'ADMIN', 'Support Admin', replyMessage]
+      );
+    } catch (mErr) {
+      console.error('Failed to log admin reply into ticket_messages:', mErr);
+    }
+
     res.json({
       success: true,
       message: `Email successfully sent to ${ticket.email}`,
@@ -2330,8 +2348,41 @@ app.post(['/api/admin/settings', '/api/settings'], async (req, res) => {
 // GET /api/users/:userId/tickets - Get tickets for a specific user
 app.get('/api/users/:userId/tickets', async (req, res) => {
   const { userId } = req.params;
+  const { email } = req.query;
   try {
-    const result = await db.query('SELECT * FROM tickets WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+    let userEmail = email ? email.trim() : null;
+    const numericUserId = parseInt(userId, 10);
+    const isValidUserId = !isNaN(numericUserId) && numericUserId > 0;
+
+    if (isValidUserId && !userEmail) {
+      const uRes = await db.query('SELECT email FROM users WHERE id = $1', [numericUserId]);
+      if (uRes.rows.length > 0 && uRes.rows[0].email) {
+        userEmail = uRes.rows[0].email.trim();
+      }
+    }
+
+    // Auto-link any unlinked tickets matching this user's email
+    if (isValidUserId && userEmail) {
+      await db.query(
+        'UPDATE tickets SET user_id = $1 WHERE user_id IS NULL AND LOWER(TRIM(email)) = LOWER(TRIM($2))',
+        [numericUserId, userEmail]
+      );
+    }
+
+    let result;
+    if (isValidUserId && userEmail) {
+      result = await db.query(
+        'SELECT * FROM tickets WHERE user_id = $1 OR LOWER(TRIM(email)) = LOWER(TRIM($2)) ORDER BY created_at DESC',
+        [numericUserId, userEmail]
+      );
+    } else if (isValidUserId) {
+      result = await db.query('SELECT * FROM tickets WHERE user_id = $1 ORDER BY created_at DESC', [numericUserId]);
+    } else if (userEmail) {
+      result = await db.query('SELECT * FROM tickets WHERE LOWER(TRIM(email)) = LOWER(TRIM($1)) ORDER BY created_at DESC', [userEmail]);
+    } else {
+      result = { rows: [] };
+    }
+
     res.json({ success: true, tickets: result.rows });
   } catch (err) {
     console.error('Fetch user tickets error:', err);
@@ -2342,14 +2393,22 @@ app.get('/api/users/:userId/tickets', async (req, res) => {
 // POST /api/tickets - Create a new support ticket
 app.post(['/api/tickets', '/api/v1/tickets'], async (req, res) => {
   const body = req.body || {};
-  const userId = body.userId || body.user_id || null;
+  let userId = body.userId || body.user_id || null;
   const name = body.name || 'Anonymous User';
-  const email = body.email || 'user@example.com';
+  const email = body.email ? body.email.trim() : 'user@example.com';
   const subject = body.subject || 'Support Query';
   const message = body.message || body.description || subject || 'No message provided';
   const priority = body.priority || 'MEDIUM';
 
   try {
+    // If userId not provided, look up registered user by email
+    if (!userId && email) {
+      const uFind = await db.query('SELECT id FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))', [email]);
+      if (uFind.rows.length > 0) {
+        userId = uFind.rows[0].id;
+      }
+    }
+
     const result = await db.query(
       'INSERT INTO tickets (user_id, name, email, subject, message, priority) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
       [userId, name, email, subject, message, priority]
@@ -2392,14 +2451,15 @@ app.get('/api/tickets/:ticketId/messages', async (req, res) => {
         [ticketId, 'USER', ticket.name, ticket.user_id, ticket.message, ticket.created_at]
       );
       messages = [initialMsg.rows[0]];
+    }
 
-      if (ticket.admin_reply) {
-        const replyMsg = await db.query(
-          'INSERT INTO ticket_messages (ticket_id, sender_type, sender_name, message, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-          [ticketId, 'ADMIN', 'Support Admin', ticket.admin_reply, ticket.replied_at || ticket.created_at]
-        );
-        messages.push(replyMsg.rows[0]);
-      }
+    // Check if ticket has an admin_reply that was never recorded in ticket_messages
+    if (ticket.admin_reply && !messages.some(m => m.sender_type !== 'USER' && m.message === ticket.admin_reply)) {
+      const replyMsg = await db.query(
+        'INSERT INTO ticket_messages (ticket_id, sender_type, sender_name, message, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        [ticketId, 'ADMIN', 'Support Admin', ticket.admin_reply, ticket.replied_at || ticket.created_at]
+      );
+      messages.push(replyMsg.rows[0]);
     }
 
     res.json({ success: true, messages, ticket });
@@ -2425,10 +2485,6 @@ app.post('/api/tickets/:ticketId/messages', async (req, res) => {
     }
     const ticket = ticketRes.rows[0];
 
-    if (ticket.status === 'RESOLVED' || ticket.status === 'CLOSED') {
-      return res.status(400).json({ success: false, message: 'This ticket has been resolved and closed. Conversation has ended.' });
-    }
-
     const senderType = sender_type || 'USER';
     const senderName = sender_name || (senderType === 'USER' ? ticket.name : 'Support Team');
 
@@ -2437,7 +2493,13 @@ app.post('/api/tickets/:ticketId/messages', async (req, res) => {
       [ticketId, senderType, senderName, sender_id || null, message.trim()]
     );
 
-    const newStatus = status || (senderType === 'USER' ? 'OPEN' : 'IN_PROGRESS');
+    // If ticket was resolved/closed and someone sends a message, reopen it to IN_PROGRESS
+    // If student sends message, status becomes IN_PROGRESS so admin/instructor sees new reply
+    let newStatus = status;
+    if (!newStatus) {
+      newStatus = 'IN_PROGRESS';
+    }
+
     await db.query(
       'UPDATE tickets SET status = $1, admin_reply = COALESCE($2, admin_reply) WHERE id = $3',
       [newStatus, senderType !== 'USER' ? message.trim() : null, ticketId]
@@ -3238,16 +3300,24 @@ app.post('/api/v1/order/initiate-payment', async (req, res) => {
         const ticketSubject = `Career Assessment Booking${assessmentDate ? ` - ${assessmentDate}` : ''}`;
         const ticketMsg = `Selected Assessment Date: ${assessmentDate || 'Not specified'}\nCandidate: ${name}\nPhone: ${phone || ''}\nFee: ₹${paymentAmount / 100}\nOrder ID: ${merchantOrderId}`;
         
+        let candidateUserId = null;
+        if (email) {
+          const userFind = await db.query('SELECT id FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))', [email]);
+          if (userFind.rows.length > 0) {
+            candidateUserId = userFind.rows[0].id;
+          }
+        }
+
         const ticketRes = await db.query(
-          `INSERT INTO tickets (name, email, subject, message, priority, status, category, assessment_date)
-           VALUES ($1, $2, $3, $4, 'HIGH', 'OPEN', 'CAREER_ASSESSMENT', $5) RETURNING id`,
-          [name, email, ticketSubject, ticketMsg, assessmentDate]
+          `INSERT INTO tickets (user_id, name, email, subject, message, priority, status, category, assessment_date)
+           VALUES ($1, $2, $3, $4, $5, 'HIGH', 'OPEN', 'CAREER_ASSESSMENT', $6) RETURNING id`,
+          [candidateUserId, name, email, ticketSubject, ticketMsg, assessmentDate]
         );
         if (ticketRes.rows.length > 0) {
           const tId = ticketRes.rows[0].id;
           await db.query(
-            `INSERT INTO ticket_messages (ticket_id, sender_type, sender_name, message) VALUES ($1, 'USER', $2, $3)`,
-            [tId, name, ticketMsg]
+            `INSERT INTO ticket_messages (ticket_id, sender_type, sender_name, sender_id, message) VALUES ($1, 'USER', $2, $3, $4)`,
+            [tId, name, candidateUserId, ticketMsg]
           );
         }
       } catch (tErr) {

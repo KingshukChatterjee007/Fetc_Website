@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useOutletContext } from 'react-router-dom';
-import { Loader2, Plus, MessageCircle, AlertCircle, Send, X, Clock, CheckCircle2, User, HelpCircle, ArrowLeft } from 'lucide-react';
+import { useOutletContext, useSearchParams } from 'react-router-dom';
+import { Loader2, Plus, MessageCircle, AlertCircle, Send, X, Clock, CheckCircle2, User, HelpCircle, ArrowLeft, ShieldAlert } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 function UserSupport() {
   const { user } = useOutletContext();
+  const [searchParams] = useSearchParams();
+  const urlTicketId = searchParams.get('ticketId');
+
   const [tickets, setTickets] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,12 +43,21 @@ function UserSupport() {
 
   const fetchTickets = async () => {
     try {
-      const response = await fetch((window.API_BASE || "") + `/api/users/${user.id}/tickets`, {
+      const emailParam = user?.email ? `email=${encodeURIComponent(user.email)}` : '';
+      const userIdVal = user?.id || '0';
+      const response = await fetch((window.API_BASE || "") + `/api/users/${userIdVal}/tickets${emailParam ? '?' + emailParam : ''}`, {
         headers: { 'ngrok-skip-browser-warning': 'true' }
       });
       const data = await response.json();
       if (data.success) {
-        setTickets(data.tickets);
+        const list = data.tickets || [];
+        setTickets(list);
+        if (urlTicketId) {
+          const matched = list.find(t => String(t.id) === String(urlTicketId));
+          if (matched) {
+            setActiveTicket(matched);
+          }
+        }
       }
     } catch (err) {
       console.error("Error fetching tickets:", err);
@@ -55,7 +67,7 @@ function UserSupport() {
   };
 
   useEffect(() => {
-    if (user?.id) fetchTickets();
+    if (user?.id || user?.email) fetchTickets();
   }, [user]);
 
   // Fetch chat history for selected active ticket
@@ -267,37 +279,73 @@ function UserSupport() {
             <p className="text-slate-500 text-sm">You haven't submitted any support requests yet.</p>
           </div>
         ) : (
-          tickets.map(ticket => (
-            <div 
-              key={ticket.id} 
-              className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between hover:shadow-md transition-all"
-            >
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <h3 className="font-bold text-slate-800 text-lg leading-snug">{ticket.subject}</h3>
-                  <span className={`px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                    ticket.status === 'OPEN' ? 'bg-amber-100 text-amber-700' :
-                    ticket.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' :
-                    'bg-emerald-100 text-emerald-700'
-                  }`}>
-                    {ticket.status}
-                  </span>
-                </div>
-                <p className="text-slate-600 text-sm line-clamp-2">{ticket.message}</p>
-                <div className="mt-3 text-xs text-slate-400 font-semibold flex items-center gap-2">
-                  <Clock size={14} /> Submitted on {new Date(ticket.created_at).toLocaleDateString()}
+          tickets.map(ticket => {
+            const hasReply = !!(ticket.admin_reply && ticket.admin_reply.trim());
+            return (
+              <div 
+                key={ticket.id} 
+                className={`bg-white rounded-2xl p-6 shadow-sm border transition-all ${
+                  hasReply ? 'border-blue-200 ring-1 ring-blue-100 hover:shadow-md' : 'border-slate-100 hover:shadow-md'
+                }`}
+              >
+                <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2 flex-wrap">
+                      <h3 className="font-bold text-slate-800 text-lg leading-snug">{ticket.subject}</h3>
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                        ticket.status === 'OPEN' ? 'bg-amber-100 text-amber-700' :
+                        ticket.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' :
+                        'bg-emerald-100 text-emerald-700'
+                      }`}>
+                        {ticket.status}
+                      </span>
+                      {hasReply && (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-600 text-white uppercase tracking-wider animate-pulse flex items-center gap-1">
+                          <MessageCircle size={11} /> Admin / Instructor Replied
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-600 text-sm line-clamp-2">{ticket.message}</p>
+                    
+                    {/* Admin / Instructor Response Highlight */}
+                    {hasReply && (
+                      <div className="mt-3 p-3.5 rounded-xl bg-blue-50/90 border border-blue-200/70">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="text-[11px] font-extrabold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+                            <CheckCircle2 size={13} className="text-blue-600" /> Instructor / Admin Response:
+                          </span>
+                          {ticket.replied_at && (
+                            <span className="text-[10px] text-blue-600 font-semibold">
+                              {new Date(ticket.replied_at).toLocaleDateString([], { day: 'numeric', month: 'short' })} at {new Date(ticket.replied_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs font-semibold text-slate-800 leading-relaxed whitespace-pre-wrap">
+                          {ticket.admin_reply}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="mt-3 text-xs text-slate-400 font-semibold flex items-center gap-2">
+                      <Clock size={14} /> Submitted on {new Date(ticket.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setActiveTicket(ticket)}
+                    className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs font-bold transition-all shrink-0 active:scale-95 shadow-xs ${
+                      hasReply 
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20 shadow-md ring-2 ring-blue-600/20' 
+                        : 'bg-blue-50 hover:bg-blue-100 text-blue-600'
+                    }`}
+                  >
+                    <MessageCircle size={16} />
+                    {hasReply ? 'View Messages & Answer' : 'Open Chat Box'}
+                  </button>
                 </div>
               </div>
-
-              <button
-                onClick={() => setActiveTicket(ticket)}
-                className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-600 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 active:scale-95"
-              >
-                <MessageCircle size={16} />
-                Open Chat Box
-              </button>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -393,32 +441,37 @@ function UserSupport() {
                   <div ref={messagesEndRef} />
                 </div>
 
-                {/* Chat Input Footer / Closed Banner */}
-                {activeTicket && (activeTicket.status?.toUpperCase() === 'RESOLVED' || activeTicket.status?.toUpperCase() === 'CLOSED') ? (
-                  <div className="p-4 border-t border-slate-100 bg-white shrink-0">
-                    <div className="p-3.5 bg-emerald-50 border border-emerald-200/80 rounded-2xl flex items-center justify-center gap-2.5 text-emerald-800 text-xs font-bold shadow-2xs">
-                      <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                      <span>This support ticket is resolved & closed. Conversation ended.</span>
+                {/* Chat Input Footer */}
+                <div className="border-t border-slate-100 bg-white shrink-0">
+                  {activeTicket && (activeTicket.status?.toUpperCase() === 'RESOLVED' || activeTicket.status?.toUpperCase() === 'CLOSED') && (
+                    <div className="px-4 py-2 bg-emerald-50/80 border-b border-emerald-100/70 flex items-center justify-between text-xs text-emerald-800">
+                      <span className="flex items-center gap-1.5 font-bold">
+                        <CheckCircle2 size={14} className="text-emerald-600" /> Ticket marked answered / resolved
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-medium">Type below to reply or ask follow-up questions</span>
                     </div>
-                  </div>
-                ) : (
-                  <form onSubmit={handleSendChatMessage} className="p-4 border-t border-slate-100 bg-white flex items-center gap-3 shrink-0">
+                  )}
+                  <form onSubmit={handleSendChatMessage} className="p-4 flex items-center gap-3">
                     <input
                       type="text"
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
-                      placeholder="Type your message here..."
+                      placeholder={
+                        activeTicket?.status?.toUpperCase() === 'RESOLVED'
+                          ? "Type your answer or follow-up query here to reply..."
+                          : "Type your message or answer here..."
+                      }
                       className="flex-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200/80 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none text-xs font-medium text-slate-800 placeholder-slate-400 transition-all shadow-2xs"
                     />
                     <button
                       type="submit"
                       disabled={!chatInput.trim() || isSendingMessage}
-                      className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-bold transition-all disabled:opacity-40 active:scale-95 shadow-sm shrink-0"
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl font-bold transition-all disabled:opacity-40 active:scale-95 shadow-sm shrink-0 flex items-center gap-1.5 text-xs"
                     >
-                      {isSendingMessage ? <Loader2 className="animate-spin w-4 h-4" /> : <Send size={16} />}
+                      {isSendingMessage ? <Loader2 className="animate-spin w-4 h-4" /> : <><Send size={15} /><span>Send</span></>}
                     </button>
                   </form>
-                )}
+                </div>
               </motion.div>
             </div>
           )}
