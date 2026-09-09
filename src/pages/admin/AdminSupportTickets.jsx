@@ -582,7 +582,6 @@ const AdminSupportTickets = () => {
                         </div>
                       </div>
                     </div>
-                  )}
                 </div>
               </motion.div>
             </div>
