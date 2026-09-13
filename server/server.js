@@ -44,6 +44,7 @@ const runMigrations = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS enrolled_course VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_otp VARCHAR(20);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_otp_expiry TIMESTAMP;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_details JSONB;
     `);
 
     // Seed default admin if not exists
