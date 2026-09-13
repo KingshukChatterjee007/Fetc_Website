@@ -615,17 +615,17 @@ app.use((req, res, next) => {
 });
 
 // Transporter for Email (Configure as needed)
+const emailUser = process.env.EMAIL_USER || process.env.SENDER_EMAIL || 'fetcllp@gmail.com';
+const emailPass = process.env.EMAIL_PASS || process.env.SENDER_PASSWORD || 'bzdhjwhfgrhhofaa';
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  port: process.env.EMAIL_PORT || 587,
-  secure: false, // true for 465, false for other ports
+  service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER, // Your email
-    pass: process.env.EMAIL_PASS, // Your app password
+    user: emailUser,
+    pass: emailPass,
   },
 });
 
-console.log('Email configured:', process.env.EMAIL_USER ? 'YES' : 'NO');
+console.log('Email configured:', emailUser ? 'YES' : 'NO');
 
 // Create uploads folder if it doesn't exist (Gracefully handle read-only filesystems like Vercel)
 const uploadDir = path.join(__dirname, 'uploads');
@@ -894,43 +894,42 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     // Attempt to send email via nodemailer
     let emailSent = false;
     try {
-      if (process.env.EMAIL_USER && process.env.EMAIL_PASS && !process.env.EMAIL_PASS.includes('your-app')) {
-        const mailOptions = {
-          from: `"FETC Education" <${process.env.EMAIL_USER}>`,
-          to: user.email,
-          subject: 'FETC - Password Reset Verification Code',
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
-              <h2 style="color: #0f172a; margin-top: 0;">Password Reset Request</h2>
-              <p style="color: #475569; font-size: 15px; line-height: 1.5;">Hello <strong>${user.name}</strong>,</p>
-              <p style="color: #475569; font-size: 15px; line-height: 1.5;">We received a request to reset the password for your FETC account. Use the 6-digit verification code below to complete your reset:</p>
-              <div style="margin: 24px 0; text-align: center;">
-                <span style="display: inline-block; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #2563eb; background-color: #eff6ff; padding: 12px 28px; border-radius: 8px; border: 1px dashed #93c5fd;">
-                  ${otp}
-                </span>
-              </div>
-              <p style="color: #64748b; font-size: 13px;">This code is valid for 15 minutes. If you did not request this, you can safely ignore this email.</p>
-              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-              <p style="color: #94a3b8; font-size: 12px; margin-bottom: 0;">&copy; ${new Date().getFullYear()} FETC Education. All rights reserved.</p>
+      const sender = emailUser || 'fetcllp@gmail.com';
+      const mailOptions = {
+        from: `"FETC Education" <${sender}>`,
+        to: user.email,
+        subject: 'FETC - Password Reset Verification Code',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+            <h2 style="color: #0f172a; margin-top: 0;">Password Reset Request</h2>
+            <p style="color: #475569; font-size: 15px; line-height: 1.5;">Hello <strong>${user.name}</strong>,</p>
+            <p style="color: #475569; font-size: 15px; line-height: 1.5;">We received a request to reset the password for your FETC account. Use the 6-digit verification code below to complete your reset:</p>
+            <div style="margin: 24px 0; text-align: center;">
+              <span style="display: inline-block; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #2563eb; background-color: #eff6ff; padding: 12px 28px; border-radius: 8px; border: 1px dashed #93c5fd;">
+                ${otp}
+              </span>
             </div>
-          `
-        };
-        await transporter.sendMail(mailOptions);
-        emailSent = true;
-      }
+            <p style="color: #64748b; font-size: 13px;">This code is valid for 15 minutes. If you did not request this, you can safely ignore this email.</p>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+            <p style="color: #94a3b8; font-size: 12px; margin-bottom: 0;">&copy; ${new Date().getFullYear()} FETC Education. All rights reserved.</p>
+          </div>
+        `
+      };
+      await transporter.sendMail(mailOptions);
+      emailSent = true;
+      console.log(`✅ Password reset OTP successfully sent to ${user.email}`);
     } catch (mailErr) {
       console.warn('Nodemailer send warning:', mailErr.message);
     }
 
-    const isDev = process.env.NODE_ENV !== 'production' || !emailSent;
     return res.json({
       success: true,
       message: emailSent 
-        ? `A 6-digit verification code has been sent to ${user.email}.`
+        ? `A 6-digit verification code has been sent to ${user.email}. Please check your inbox or spam folder.`
         : `Verification code generated successfully.`,
       emailSent,
-      // Provide devOtp if SMTP is unconfigured or in local dev so testing works smoothly
-      devOtp: isDev ? otp : undefined
+      // Only provide devOtp if email sending failed
+      devOtp: !emailSent ? otp : undefined
     });
   } catch (err) {
     console.error('Forgot password error:', err);
