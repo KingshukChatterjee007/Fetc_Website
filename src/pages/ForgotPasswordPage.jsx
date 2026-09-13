@@ -28,7 +28,6 @@ const ForgotPasswordPage = () => {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
   const [devOtp, setDevOtp] = useState("");
   const [countdown, setCountdown] = useState(0);
 
@@ -50,7 +49,6 @@ const ForgotPasswordPage = () => {
     }
 
     setError("");
-    setSuccessMessage("");
     setIsSubmitting(true);
 
     try {
@@ -71,7 +69,6 @@ const ForgotPasswordPage = () => {
         if (data.devOtp) {
           setDevOtp(data.devOtp);
         }
-        setSuccessMessage(data.message || "A 6-digit verification code has been generated.");
       } else {
         setError(data.message || "No account found with this email.");
       }
@@ -135,30 +132,33 @@ const ForgotPasswordPage = () => {
   };
 
   return (
-    <div className="min-h-[85vh] bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center mb-4">
-          <div className="h-16 w-16 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 mb-2 shadow-sm border border-blue-100">
-            {step === 3 ? <CheckCircle2 size={34} className="text-emerald-500" /> : <KeyRound size={32} />}
-          </div>
-        </div>
+    <div className="min-h-[calc(100vh-140px)] w-full flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-[#F8FAFC]">
+      {/* Ambient background glow matching MyAccount portal */}
+      <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-blue-400/10 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
+      <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-indigo-400/10 rounded-full blur-[120px] translate-x-1/2 translate-y-1/2 pointer-events-none" />
 
-        <h2 className="text-center text-3xl font-extrabold text-slate-900 tracking-tight">
-          {step === 1 && "Forgot Password?"}
-          {step === 2 && "Reset Your Password"}
-          {step === 3 && "Password Reset Done!"}
-        </h2>
-        
-        <p className="mt-2 text-center text-sm text-slate-600 px-4">
-          {step === 1 && "Enter your registered email address to receive your 6-digit verification code."}
-          {step === 2 && `Enter the 6-digit code sent to ${email} and choose a new password.`}
-          {step === 3 && "Your password has been updated securely. You can now log in to your account."}
-        </p>
-      </div>
-
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-5 sm:px-8 shadow-sm rounded-2xl border border-slate-200/80">
+      <div className="w-full max-w-md relative z-10 my-auto">
+        <div className="bg-white/90 backdrop-blur-2xl p-7 sm:p-9 rounded-[2rem] border border-white shadow-[0_24px_48px_-12px_rgba(0,0,0,0.08)]">
           
+          {/* Header & Icon */}
+          <div className="text-center mb-6">
+            <div className="inline-flex h-14 w-14 bg-blue-50 rounded-2xl items-center justify-center text-blue-600 mb-3 shadow-sm border border-blue-100">
+              {step === 3 ? <CheckCircle2 size={32} className="text-emerald-500" /> : <KeyRound size={28} />}
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              {step === 1 && "Forgot Password?"}
+              {step === 2 && "Reset Your Password"}
+              {step === 3 && "Password Reset Done!"}
+            </h1>
+            
+            <p className="mt-2 text-xs sm:text-sm text-slate-500 px-2 leading-relaxed">
+              {step === 1 && "Enter your registered email address to receive your 6-digit verification code."}
+              {step === 2 && `Enter the 6-digit code sent to ${email} and choose a new password.`}
+              {step === 3 && "Your password has been updated securely. You can now log in to your account."}
+            </p>
+          </div>
+
           {/* Error notification */}
           {error && (
             <div className="mb-5 p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-rose-700 text-xs font-medium animate-shake">
@@ -189,7 +189,7 @@ const ForgotPasswordPage = () => {
 
           {/* STEP 1: Enter Email */}
           {step === 1 && (
-            <form onSubmit={handleRequestOtp} className="space-y-5">
+            <form onSubmit={handleRequestOtp} className="space-y-4">
               <div className="space-y-1.5 group">
                 <label htmlFor="email" className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
                   Registered Email
@@ -214,11 +214,11 @@ const ForgotPasswordPage = () => {
                 </div>
               </div>
 
-              <div>
+              <div className="pt-2">
                 <button
                   type="submit"
                   disabled={isSubmitting || !email}
-                  className={`w-full flex justify-center items-center gap-2 py-3 px-4 rounded-xl font-bold text-sm text-white transition-all bg-blue-600 hover:bg-blue-700 active:scale-[0.98] ${
+                  className={`w-full flex justify-center items-center gap-2 py-3.5 px-4 rounded-xl font-bold text-sm text-white transition-all bg-blue-600 hover:bg-blue-700 active:scale-[0.98] ${
                     isSubmitting || !email ? "opacity-70 cursor-not-allowed" : "shadow-md hover:shadow-lg"
                   }`}
                 >
@@ -349,7 +349,7 @@ const ForgotPasswordPage = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting || !otp || !newPassword || !confirmPassword}
-                  className={`w-full flex justify-center items-center gap-2 py-3 px-4 rounded-xl font-bold text-sm text-white transition-all bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] ${
+                  className={`w-full flex justify-center items-center gap-2 py-3.5 px-4 rounded-xl font-bold text-sm text-white transition-all bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] ${
                     isSubmitting || !otp || !newPassword || !confirmPassword
                       ? "opacity-70 cursor-not-allowed"
                       : "shadow-md hover:shadow-lg"
@@ -401,7 +401,7 @@ const ForgotPasswordPage = () => {
               <div className="pt-3">
                 <button
                   onClick={() => navigate("/my-account", { state: { tab: "login" } })}
-                  className="w-full flex justify-center items-center py-3 px-4 rounded-xl shadow-md font-bold text-sm text-white bg-blue-600 hover:bg-blue-700 active:scale-[0.98] transition-all"
+                  className="w-full flex justify-center items-center py-3.5 px-4 rounded-xl shadow-md font-bold text-sm text-white bg-blue-600 hover:bg-blue-700 active:scale-[0.98] transition-all"
                 >
                   Log In Now
                 </button>
