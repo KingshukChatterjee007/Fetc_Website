@@ -196,6 +196,14 @@ const AdminUsers = () => {
       });
       const data = await response.json();
       if (data.success) {
+        try {
+          const activeUser = JSON.parse(localStorage.getItem('user') || '{}');
+          if (activeUser && (String(activeUser.id) === String(id))) {
+            localStorage.removeItem('user');
+            localStorage.removeItem('token');
+            window.dispatchEvent(new Event('user-logout'));
+          }
+        } catch (e) {}
         fetchUsers();
       } else {
         alert(data.message || 'Failed to delete user');
@@ -241,6 +249,14 @@ const AdminUsers = () => {
       });
       const data = await response.json();
       if (data.success) {
+        try {
+          const activeUser = JSON.parse(localStorage.getItem('user') || '{}');
+          if (activeUser && selectedUserIds.map(String).includes(String(activeUser.id))) {
+            localStorage.removeItem('user');
+            localStorage.removeItem('token');
+            window.dispatchEvent(new Event('user-logout'));
+          }
+        } catch (e) {}
         setUsers(users.filter(u => !selectedUserIds.includes(u.id)));
         setSelectedUserIds([]);
       } else {

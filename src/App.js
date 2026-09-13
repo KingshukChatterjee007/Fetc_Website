@@ -1,11 +1,14 @@
+import React, { useEffect } from "react";
 import { 
   BrowserRouter, 
   Routes, 
   Route, 
   Navigate, 
-  useLocation 
+  useLocation,
+  useNavigate
 } from "react-router-dom";
 import { MotionConfig } from "framer-motion";
+import { getApiUrl } from "./apiConfig";
 import Footer from "./components/Footer";
 import Navbar from "./components/Navbar";
 import CareerAssessmentPage from "./pages/CareerAssessmentPage";
@@ -61,7 +64,65 @@ import AdminPartners from "./pages/admin/AdminPartners";
 
 function AppContent() {
   const location = useLocation();
+  const navigate = useNavigate();
   const isAdminPath = location.pathname.startsWith('/admin');
+
+  // Global Session Guard: Automatically logs out users if an admin deletes their account from DB
+  useEffect(() => {
+    let isMounted = true;
+
+    const verifySession = async () => {
+      const userStr = localStorage.getItem("user");
+      if (!userStr) return;
+
+      try {
+        const user = JSON.parse(userStr);
+        if (!user || (!user.id && !user.email)) return;
+
+        const identifier = user.id ? `userId=${user.id}` : `email=${encodeURIComponent(user.email)}`;
+        const response = await fetch(getApiUrl(`/api/auth/verify-session?${identifier}`), {
+          headers: { "ngrok-skip-browser-warning": "true" }
+        });
+
+        const data = await response.json();
+
+        // If user is deleted or not found in database
+        if (!data.success && (response.status === 404 || data.deleted)) {
+          if (!isMounted) return;
+          console.warn("User account deleted in database. Terminating session.");
+          localStorage.removeItem("user");
+          localStorage.removeItem("token");
+          window.dispatchEvent(new Event("user-logout"));
+
+          const isProtectedRoute = location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/admin');
+          if (isProtectedRoute) {
+            navigate('/my-account', { 
+              replace: true, 
+              state: { deletedNotice: "Your account has been deleted by an administrator. You have been logged out." } 
+            });
+          }
+        }
+      } catch (err) {
+        // Silently catch network errors during offline / loading states
+      }
+    };
+
+    // Check on navigation
+    verifySession();
+
+    // Check when user switches back to this tab/window
+    const handleFocus = () => verifySession();
+    window.addEventListener("focus", handleFocus);
+
+    // Heartbeat check every 12 seconds
+    const interval = setInterval(verifySession, 12000);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener("focus", handleFocus);
+      clearInterval(interval);
+    };
+  }, [location.pathname, navigate]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">

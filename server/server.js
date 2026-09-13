@@ -42,6 +42,8 @@ const runMigrations = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS enrolled_course VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_otp VARCHAR(20);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_otp_expiry TIMESTAMP;
     `);
 
     // Seed default admin if not exists
@@ -812,6 +814,176 @@ app.post('/api/auth/login', async (req, res) => {
     }
   } catch (err) {
     console.error(err);
+    res.status(500).json({ success: false, message: 'Server database error' });
+  }
+});
+
+// Verify User Session (Checks if user still exists in DB)
+app.get('/api/auth/verify-session', async (req, res) => {
+  const userId = req.query.userId || req.headers['x-user-id'];
+  const email = req.query.email || req.headers['x-user-email'];
+
+  if (!userId && !email) {
+    return res.status(400).json({ success: false, message: 'User identifier required' });
+  }
+
+  try {
+    let query = 'SELECT id, name, email, role, status FROM users WHERE id = $1';
+    let param = parseInt(userId);
+
+    if (isNaN(param) || !userId) {
+      query = 'SELECT id, name, email, role, status FROM users WHERE LOWER(email) = LOWER($1)';
+      param = email;
+    }
+
+    const result = await db.query(query, [param]);
+
+    if (result.rows.length === 0) {
+      // User was deleted by admin
+      return res.status(404).json({
+        success: false,
+        deleted: true,
+        message: 'User account has been deleted'
+      });
+    }
+
+    const user = result.rows[0];
+    if (user.status && user.status.toUpperCase() === 'INACTIVE') {
+      return res.status(403).json({
+        success: false,
+        inactive: true,
+        message: 'User account is inactive'
+      });
+    }
+
+    res.json({ success: true, user });
+  } catch (err) {
+    console.error('Verify session error:', err);
+    res.status(500).json({ success: false, message: 'Server database error' });
+  }
+});
+
+// Forgot Password - Request 6-digit OTP
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email } = req.body;
+
+  if (!email || !email.trim()) {
+    return res.status(400).json({ success: false, message: 'Email address is required' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    const userCheck = await db.query('SELECT id, name, email FROM users WHERE LOWER(email) = $1', [cleanEmail]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'No account registered with this email address.' });
+    }
+
+    const user = userCheck.rows[0];
+    // Generate secure 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes validity
+
+    // Save OTP & expiry to DB
+    await db.query(
+      'UPDATE users SET reset_otp = $1, reset_otp_expiry = $2 WHERE id = $3',
+      [otp, expiry, user.id]
+    );
+
+    // Attempt to send email via nodemailer
+    let emailSent = false;
+    try {
+      if (process.env.EMAIL_USER && process.env.EMAIL_PASS && !process.env.EMAIL_PASS.includes('your-app')) {
+        const mailOptions = {
+          from: `"FETC Education" <${process.env.EMAIL_USER}>`,
+          to: user.email,
+          subject: 'FETC - Password Reset Verification Code',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+              <h2 style="color: #0f172a; margin-top: 0;">Password Reset Request</h2>
+              <p style="color: #475569; font-size: 15px; line-height: 1.5;">Hello <strong>${user.name}</strong>,</p>
+              <p style="color: #475569; font-size: 15px; line-height: 1.5;">We received a request to reset the password for your FETC account. Use the 6-digit verification code below to complete your reset:</p>
+              <div style="margin: 24px 0; text-align: center;">
+                <span style="display: inline-block; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #2563eb; background-color: #eff6ff; padding: 12px 28px; border-radius: 8px; border: 1px dashed #93c5fd;">
+                  ${otp}
+                </span>
+              </div>
+              <p style="color: #64748b; font-size: 13px;">This code is valid for 15 minutes. If you did not request this, you can safely ignore this email.</p>
+              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+              <p style="color: #94a3b8; font-size: 12px; margin-bottom: 0;">&copy; ${new Date().getFullYear()} FETC Education. All rights reserved.</p>
+            </div>
+          `
+        };
+        await transporter.sendMail(mailOptions);
+        emailSent = true;
+      }
+    } catch (mailErr) {
+      console.warn('Nodemailer send warning:', mailErr.message);
+    }
+
+    const isDev = process.env.NODE_ENV !== 'production' || !emailSent;
+    return res.json({
+      success: true,
+      message: emailSent 
+        ? `A 6-digit verification code has been sent to ${user.email}.`
+        : `Verification code generated successfully.`,
+      emailSent,
+      // Provide devOtp if SMTP is unconfigured or in local dev so testing works smoothly
+      devOtp: isDev ? otp : undefined
+    });
+  } catch (err) {
+    console.error('Forgot password error:', err);
+    res.status(500).json({ success: false, message: 'Server database error' });
+  }
+});
+
+// Reset Password - Verify OTP & Set New Password
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+
+  if (!email || !otp || !newPassword) {
+    return res.status(400).json({ success: false, message: 'Email, verification code, and new password are required' });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanOtp = otp.toString().trim();
+
+  try {
+    const userCheck = await db.query(
+      'SELECT id, name, email, reset_otp, reset_otp_expiry FROM users WHERE LOWER(email) = $1',
+      [cleanEmail]
+    );
+
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const user = userCheck.rows[0];
+
+    if (!user.reset_otp || user.reset_otp !== cleanOtp) {
+      return res.status(400).json({ success: false, message: 'Invalid verification code. Please check and try again.' });
+    }
+
+    if (new Date() > new Date(user.reset_otp_expiry)) {
+      return res.status(400).json({ success: false, message: 'Verification code has expired. Please request a new one.' });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password and clear reset_otp
+    await db.query(
+      'UPDATE users SET password = $1, reset_otp = NULL, reset_otp_expiry = NULL WHERE id = $2',
+      [hashedPassword, user.id]
+    );
+
+    res.json({ success: true, message: 'Password reset successful! You can now log in with your new password.' });
+  } catch (err) {
+    console.error('Reset password error:', err);
     res.status(500).json({ success: false, message: 'Server database error' });
   }
 });

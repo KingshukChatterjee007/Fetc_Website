@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Mail, 
@@ -37,6 +37,9 @@ export default function MyAccountPage() {
       setIsLogin(false);
     } else if (location.state?.tab === 'login') {
       setIsLogin(true);
+    }
+    if (location.state?.deletedNotice) {
+      setError(location.state.deletedNotice);
     }
   }, [location.state]);
 
@@ -304,9 +307,12 @@ export default function MyAccountPage() {
                     <div className="flex justify-between items-center ml-1">
                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Password</label>
                       {isLogin && (
-                        <button type="button" className="text-xs font-bold text-blue-600 hover:text-blue-700">
+                        <Link 
+                          to="/forgot-password" 
+                          className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline transition-all"
+                        >
                           Forgot Password?
-                        </button>
+                        </Link>
                       )}
                     </div>
                     <div className="relative group">

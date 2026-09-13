@@ -5,19 +5,70 @@ import {
   MessageCircle, FileCheck, BookOpen, ShoppingBag,
   CreditCard, ClipboardCheck
 } from 'lucide-react';
-import { getProfileImageUrl } from "../../apiConfig";
+import { getProfileImageUrl, getApiUrl } from "../../apiConfig";
 import SafeImage from "../SafeImage";
 
 const UserLayout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const navigate = useNavigate();
-  const [userData, setUserData] = useState(() => 
-    JSON.parse(localStorage.getItem('user') || '{"name":"User"}')
-  );
+  const [userData, setUserData] = useState(() => {
+    try {
+      const u = localStorage.getItem('user');
+      return u ? JSON.parse(u) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Guard: If not logged in, redirect immediately to login
+  useEffect(() => {
+    const rawUser = localStorage.getItem('user');
+    if (!rawUser) {
+      navigate('/my-account', { replace: true });
+      return;
+    }
+
+    // Verify user exists in database
+    const verifyUserExists = async () => {
+      try {
+        const u = JSON.parse(rawUser);
+        if (!u || (!u.id && !u.email)) {
+          navigate('/my-account', { replace: true });
+          return;
+        }
+
+        const identifier = u.id ? `userId=${u.id}` : `email=${encodeURIComponent(u.email)}`;
+        const res = await fetch(getApiUrl(`/api/auth/verify-session?${identifier}`), {
+          headers: { 'ngrok-skip-browser-warning': 'true' }
+        });
+        const data = await res.json();
+
+        if (!data.success && (res.status === 404 || data.deleted)) {
+          console.warn("User account deleted in database. Logging out.");
+          localStorage.removeItem('user');
+          localStorage.removeItem('token');
+          window.dispatchEvent(new Event("user-logout"));
+          navigate('/my-account', { 
+            replace: true, 
+            state: { deletedNotice: "Your account has been deleted by an administrator. You have been logged out." } 
+          });
+        }
+      } catch (err) {
+        // Silently catch in offline mode
+      }
+    };
+
+    verifyUserExists();
+  }, [navigate]);
 
   useEffect(() => {
     const handleUserUpdate = () => {
-      setUserData(JSON.parse(localStorage.getItem('user') || '{"name":"User"}'));
+      try {
+        const u = localStorage.getItem('user');
+        setUserData(u ? JSON.parse(u) : null);
+      } catch {
+        setUserData(null);
+      }
     };
     window.addEventListener("user-login", handleUserUpdate);
     window.addEventListener("user-logout", handleUserUpdate);
